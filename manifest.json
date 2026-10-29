@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "X-starter",
+  "short_name": "X-starter",
+  "version": "0.5.0",
+  "description": "帮助 X 新账户快速起号：结合上下文生成 4 条回复候选、学习手写语气、标记资料卡，并定期整理待确认的回关名单。通过本机 Magpie 调用模型。",
+  "minimum_chrome_version": "120",
+  "options_ui": { "page": "popup.html?settings=1", "open_in_tab": true },
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*", "https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "X-starter · 回复灵感与账号起步",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "content_scripts": [{
+    "matches": ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"],
+    "js": ["shared.js", "memory.js", "context.js", "learning.js", "profile.js", "editor.js", "followback.js", "followers.js", "content.js"],
+    "run_at": "document_idle"
+  }],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:*; base-uri 'none'"
+  }
+}

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>X-starter</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="shared.js" defer></script>
+  <script src="memory.js" defer></script>
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.5.0</span></header>
+    <section class="connection" aria-label="Magpie 连接">
+      <div class="connection-title"><span id="connection-dot" class="dot"></span><strong id="connection-label">正在寻找 Magpie</strong><span class="tag">本机连接</span></div>
+      <p id="connection-detail">复用 Magpie 已接入的模型，无需填写 API Key。</p>
+    </section>
+    <form id="settings-form">
+      <div class="settings-layout"><section class="general-panel" aria-label="模型与上下文设置">
+      <label for="model">回复模型 <span>从 Magpie 自动读取</span></label>
+      <select id="model"><option value="">自动选择（优先路由组）</option></select>
+      <div class="row"><div><label for="language">回复语言</label><select id="language"><option value="auto">跟随原文</option><option value="zh">简体中文</option><option value="en">English</option></select></div><div><label for="length">回复长度</label><select id="length"><option value="short">简短 · 1–2 句</option><option value="medium">适中 · 1–3 句</option></select></div></div>
+      <label class="toggle"><input id="conversational" type="checkbox"><span><strong>口语表达</strong><small>像评论区接话，少套话、少复述，别写成分析报告。</small></span></label>
+      <label class="toggle"><input id="auto-generate" type="checkbox" aria-describedby="auto-generate-warning"><span><strong>自动生成候选</strong><small>默认关闭，手动点击按钮生成。勾选并保存后，打开详情或聚焦回复框时自动生成。</small></span></label>
+      <p id="auto-generate-warning" class="auto-warning" role="alert" hidden></p>
+      <label class="toggle"><input id="context-enabled" type="checkbox"><span><strong>结合对话上下文</strong><small>分析同一会话已加载的主帖、上文回复和引用帖，可在回复面板查看、编辑或排除。</small></span></label>
+      <div class="context-limit-row"><label for="context-limit">自动上下文条数上限</label><input id="context-limit" type="number" min="2" max="30" value="12" required><span>条</span></div>
+      <fieldset class="profile-options"><legend>悬浮资料卡标记</legend>
+        <label class="toggle"><input id="profile-highlight" type="checkbox"><span><strong>关注明显少于粉丝时标黄</strong><small>鼠标悬停打开用户资料后，将符合条件的卡片背景标为芥末黄。</small></span></label>
+        <div class="profile-threshold-row"><label for="profile-gap-threshold">少于粉丝至少</label><input id="profile-gap-threshold" type="number" min="0" max="100" step="1" value="20" required><span>%</span><i class="profile-swatch" aria-label="芥末黄"></i></div>
+        <p id="profile-formula" class="field-help">关注数 ≤ 粉丝数 × 80% 时标记，包含刚好少 20%。</p>
+        <label class="toggle"><input id="profile-priority" type="checkbox"><span><strong>优先关注的认证账号标绿</strong><small>已认证、关注数大于粉丝数，且粉丝数大于 500，三项同时满足才标绿。</small></span></label>
+        <p class="field-help">按卡片显示的数量在本地计算；数量未加载时先不标记。</p>
+      </fieldset>
+      <fieldset class="followback-options"><legend>定期回关名单</legend>
+        <label class="toggle"><input id="followback-enabled" type="checkbox"><span><strong>定期整理回关名单</strong><small>每半小时检查粉丝列表，包含现有粉丝。每轮最多 5 人，需逐个点击确认回关，间隔至少 10 秒。</small></span></label>
+        <label for="followback-account">绑定的 X 用户名</label><div class="followback-account-row"><input id="followback-account" type="text" maxlength="16" placeholder="@用户名" autocomplete="off" spellcheck="false"><button id="followback-identify" class="secondary" type="button">识别账号</button></div>
+        <p class="field-help">浏览器运行且登录该账号时检查；会临时打开后台标签页。只整理名单，不会自动点击关注。遇到账号切换、验证或限制会暂停。</p>
+        <div class="followback-toolbar"><button id="followback-check" class="secondary" type="button">立即检查</button><button id="followback-refresh" class="text-button" type="button">刷新状态</button></div>
+        <p id="followback-status" class="field-help" role="status" aria-live="polite"></p><p id="followback-meta" class="field-help"></p><div id="followback-list"></div>
+      </fieldset>
+      <details class="advanced"><summary>连接设置</summary><label for="port">本机 Magpie 端口</label><div class="port-row"><span>127.0.0.1 :</span><input id="port" type="number" min="1" max="65535" value="3425" required aria-label="Magpie 端口"><button id="check" type="button" class="secondary">检测连接</button></div><p>端口默认 3425。Magpie 需在同一台电脑上运行。</p></details>
+      <button id="open-full-settings" class="secondary full" type="button">配置语气、记忆与 4 条候选 ↗</button>
+      </section><section class="prompt-panel" aria-label="提示词配置">
+        <div class="section-heading"><div><h2>写作要求</h2><p>全局规则对四条候选同时生效，每条也有独立偏好。</p></div><button id="restore-prompts" class="text-button" type="button">恢复默认提示词</button></div>
+        <label for="tone">全局语气</label><textarea id="tone" rows="4" maxlength="1500" placeholder="例如：像评论区随手接一句，短一点，直接一点，不铺背景，不每句都先夸再建议。"></textarea>
+        <label for="strict-rules">严格限制 <span>优先于语气和每条候选偏好</span></label><textarea id="strict-rules" rows="4" maxlength="5000" placeholder="例如：不使用表情符号；不提及产品；不能捏造个人经历；只讨论观点。"></textarea>
+        <div class="hard-rule-grid"><div><label for="max-chars">单条字数上限 <span>空格、标点计入</span></label><input id="max-chars" type="number" min="10" max="280" value="280" required><p class="field-help">同时遵守 X 的 280 个加权字符上限。</p></div><div><label for="banned-terms">禁用词 / 短语 <span>每行一个</span></label><textarea id="banned-terms" rows="3" maxlength="8100" placeholder="绝对不能出现的词或短语"></textarea></div></div>
+        <p class="field-help rules-help">字数与禁用词由扩展校验，不合格的候选不会展示。其他自然语言限制由模型遵守，选择前仍可检查、编辑。</p>
+        <div class="section-heading candidates-heading"><div><h2>4 条候选的偏好</h2><p>名称显示在回复卡片上；写作要求描述这一条如何表达。</p></div></div>
+        <div id="candidate-preferences" class="preference-grid"></div>
+        <section id="voice-memory-panel" class="voice-memory-panel" aria-label="手写样本与语气记忆">
+          <div class="section-heading candidates-heading"><div><h2>语气记忆</h2><p>从你手写发布的内容里，学习你平常怎么说话。</p></div><button id="memory-refresh" class="text-button" type="button">刷新样本</button></div>
+          <label class="toggle"><input id="collect-writing" type="checkbox"><span><strong>收集手写发布</strong><small>仅收集这台浏览器确认发布成功的新帖和回复。用过插件候选的草稿不作为样本；收集过程不调用模型。</small></span></label>
+          <label class="toggle"><input id="use-voice-memory" type="checkbox"><span><strong>生成回复时参考语气记忆</strong><small>按当前 X 账号使用自己的记忆。只学习说话习惯，仍遵守严格限制与每条候选要求。</small></span></label>
+          <p class="field-help">这两个开关随「保存设置」生效。样本和 Markdown 保存在扩展本地，最多保留 5 个账号、每个账号最近 80 条，每条最多 3000 字符。</p>
+          <label for="memory-account">X 账号</label><select id="memory-account"><option value="">尚未收集到手写内容</option></select>
+          <p id="memory-meta" class="field-help">先在 X 手写并发布一条帖子或回复，再点刷新样本。</p>
+          <div class="memory-actions"><button id="memory-update" class="secondary" type="button" disabled>更新语气记忆</button><button id="memory-export" class="secondary" type="button" disabled>导出 Markdown</button></div>
+          <p class="field-help">更新时才会通过 Magpie 将这个账号的手写样本发给已保存的回复模型，并重写总结。生成候选时只参考总结，不附带整份样本记录。</p>
+          <label for="memory-markdown">我的语气记忆 <span>可以直接修改 Markdown</span></label>
+          <textarea id="memory-markdown" rows="12" maxlength="12000" placeholder="# 语气记忆&#10;&#10;收集手写样本后，点击「更新语气记忆」。" disabled></textarea>
+          <div class="memory-actions"><button id="memory-save" class="secondary" type="button" disabled>保存语气记忆</button><button id="memory-clear" class="text-button danger" type="button" disabled>清空此账号的记忆与样本</button></div>
+          <p id="memory-feedback" class="memory-feedback" role="status" aria-live="polite"></p>
+          <details class="memory-samples"><summary>查看已收集的手写样本</summary><p class="field-help">删除样本会同时清空原总结，需要手动重新更新。</p><div id="memory-samples"></div></details>
+        </section>
+      </section></div>
+      <div class="form-actions">
+      <button id="save" class="primary" type="submit" disabled>保存设置</button>
+      <button id="open-panel" class="secondary full" type="button">在当前 X 页面打开回复面板</button>
+      </div>
+    </form>
+    <p id="feedback" role="status" aria-live="polite"></p>
+    <footer><span>仅生成草稿，发布由你决定</span><button type="button" id="clear-cache">清除候选缓存</button></footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "x-starter",
+  "version": "0.5.0",
+  "private": true,
+  "description": "帮助 X 新账户快速起号的 Chrome / Edge 扩展，使用本机 Magpie 生成回复候选。",
+  "license": "MIT",
+  "repository": "github:MrCrazyK/x-starter",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "package": "node scripts/package.cjs",
+    "test": "node --test tests/core.test.cjs tests/background.test.cjs tests/memory.test.cjs tests/profile.test.cjs tests/followback.test.cjs",
+    "test:browser": "node tests/followback-browser.cjs && node tests/profile-browser.cjs && node tests/reply-browser.cjs && node tests/controlled-editor.cjs && node tests/memory-browser.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "draft-js": "0.11.7",
+    "react": "17.0.2",
+    "react-dom": "17.0.2"
+  }
+}
