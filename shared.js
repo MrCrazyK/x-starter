@@ -23,7 +23,7 @@
     maxChars: 280, bannedTerms: Object.freeze([]), candidatePreferences: STYLES,
     contextEnabled: true, contextLimit: 12, conversational: true,
     collectWritingSamples: true, useVoiceMemory: true,
-    profileHighlightEnabled: true, profileGapThreshold: 20, profilePriorityEnabled: true,
+    profileHighlightEnabled: true, profileGapThreshold: 20, profilePriorityEnabled: true, timelinePriorityEnabled: false,
     followbackEnabled: false, followbackAccount: ''
   });
   class ReplyError extends Error {
@@ -74,6 +74,7 @@
       profileHighlightEnabled: typeof input.profileHighlightEnabled === 'boolean' ? input.profileHighlightEnabled : true,
       profileGapThreshold,
       profilePriorityEnabled: typeof input.profilePriorityEnabled === 'boolean' ? input.profilePriorityEnabled : true,
+      timelinePriorityEnabled: input.timelinePriorityEnabled === true,
       followbackEnabled: input.followbackEnabled === true, followbackAccount
     };
   }

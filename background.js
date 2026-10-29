@@ -1,5 +1,5 @@
 /* All model requests originate here, never from x.com's origin. */
-importScripts('shared.js', 'memory.js', 'followback.js', 'followback-background.js');
+importScripts('shared.js', 'memory.js', 'followback.js', 'followback-background.js', 'priority.js', 'priority-background.js');
 const C = globalThis.MagpieReply;
 const M = globalThis.MagpieMemory;
 const APP_KEY = 'magpie-x-reply'; // Local application identity, not a vendor API secret.
@@ -11,6 +11,7 @@ let memoryQueue = Promise.resolve(), generatedQueue = Promise.resolve();
 
 async function getSettings() { return C.settings((await chrome.storage.local.get('settings')).settings); }
 const followback = chrome.alarms ? MagpieFollowbackBackground.create({ getSettings }) : null;
+const priorityProfiles = chrome.alarms ? MagpiePriorityBackground.create({ getSettings }) : null;
 async function hash(value) {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -230,6 +231,20 @@ async function dispatch(message, sender) {
   const type = senderType(sender);
   if (!type || !message || typeof message !== 'object') throw new C.ReplyError('DENIED', '此页面无权调用扩展。');
   switch (message.type) {
+    case 'PRIORITY_PROFILES':
+    case 'OBSERVED_PRIORITY_PROFILE': {
+      if (type !== 'content') throw new C.ReplyError('DENIED', '请从 X 页面读取头像资料。');
+      if (!priorityProfiles) return { profiles: [] };
+      await priorityProfiles.ready;
+      return message.type === 'PRIORITY_PROFILES' ? priorityProfiles.request(message, sender.tab.id) : priorityProfiles.observe(message.profile);
+    }
+    case 'PRIORITY_STATUS':
+    case 'CLEAR_PRIORITY_CACHE': {
+      if (type !== 'extension') throw new C.ReplyError('DENIED', '请在扩展设置中管理资料缓存。');
+      if (!priorityProfiles) return { enabled: false, cached: 0, notice: '请重新加载扩展。' };
+      await priorityProfiles.ready;
+      return message.type === 'PRIORITY_STATUS' ? priorityProfiles.status() : priorityProfiles.clear();
+    }
     case 'FOLLOWBACK_STATUS':
     case 'FOLLOWBACK_CHECK':
     case 'FOLLOWBACK_IDENTIFY':
@@ -309,6 +324,7 @@ async function dispatch(message, sender) {
       const previous = await getSettings();
       await chrome.storage.local.set({ settings: normalized });
       if (followback) { await followback.ready; await followback.configure(previous, normalized); }
+      if (priorityProfiles) { await priorityProfiles.ready; await priorityProfiles.configure(previous, normalized); }
       catalogCache.clear();
       for (const job of jobs.values()) job.controller.abort();
       for (const job of voiceJobs.values()) job.controller.abort();

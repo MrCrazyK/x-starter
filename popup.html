@@ -11,7 +11,7 @@
 </head>
 <body>
   <main>
-    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.5.0</span></header>
+    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.6.0</span></header>
     <section class="connection" aria-label="Magpie 连接">
       <div class="connection-title"><span id="connection-dot" class="dot"></span><strong id="connection-label">正在寻找 Magpie</strong><span class="tag">本机连接</span></div>
       <p id="connection-detail">复用 Magpie 已接入的模型，无需填写 API Key。</p>
@@ -26,12 +26,15 @@
       <p id="auto-generate-warning" class="auto-warning" role="alert" hidden></p>
       <label class="toggle"><input id="context-enabled" type="checkbox"><span><strong>结合对话上下文</strong><small>分析同一会话已加载的主帖、上文回复和引用帖，可在回复面板查看、编辑或排除。</small></span></label>
       <div class="context-limit-row"><label for="context-limit">自动上下文条数上限</label><input id="context-limit" type="number" min="2" max="30" value="12" required><span>条</span></div>
-      <fieldset class="profile-options"><legend>悬浮资料卡标记</legend>
+      <fieldset class="profile-options"><legend>资料与头像标记</legend>
         <label class="toggle"><input id="profile-highlight" type="checkbox"><span><strong>关注明显少于粉丝时标黄</strong><small>鼠标悬停打开用户资料后，将符合条件的卡片背景标为芥末黄。</small></span></label>
         <div class="profile-threshold-row"><label for="profile-gap-threshold">少于粉丝至少</label><input id="profile-gap-threshold" type="number" min="0" max="100" step="1" value="20" required><span>%</span><i class="profile-swatch" aria-label="芥末黄"></i></div>
         <p id="profile-formula" class="field-help">关注数 ≤ 粉丝数 × 80% 时标记，包含刚好少 20%。</p>
         <label class="toggle"><input id="profile-priority" type="checkbox"><span><strong>优先关注的认证账号标绿</strong><small>已认证、关注数大于粉丝数，且粉丝数大于 500，三项同时满足才标绿。</small></span></label>
         <p class="field-help">按卡片显示的数量在本地计算；数量未加载时先不标记。</p>
+        <label class="toggle"><input id="timeline-priority" type="checkbox"><span><strong>时间线推荐关注：头像绿框</strong><small>无需悬停。开启后，限速读取屏幕内认证作者的资料；满足「关注数 &gt; 粉丝数 &gt; 500」时给头像加绿框。</small></span></label>
+        <p class="field-help">默认关闭。每分钟最多读取 3 位，最多同时打开 1 个临时后台资料页，资料缓存 24 小时。尚未读到资料时不标记；不调用模型。</p>
+        <p id="priority-status" class="field-help" role="status"></p><button id="clear-priority-cache" type="button" class="text-button">清除资料缓存并重试</button>
       </fieldset>
       <fieldset class="followback-options"><legend>定期回关名单</legend>
         <label class="toggle"><input id="followback-enabled" type="checkbox"><span><strong>定期整理回关名单</strong><small>每半小时检查粉丝列表，包含现有粉丝。每轮最多 5 人，需逐个点击确认回关，间隔至少 10 秒。</small></span></label>

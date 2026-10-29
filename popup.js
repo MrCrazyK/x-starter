@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 let current;
 let followbackState = null, followbackBusy = false, followbackRefreshing = false;
+let priorityRefreshing = false;
 const fullSettings = new URLSearchParams(location.search).has('settings');
 document.body.classList.toggle('full-settings', fullSettings);
 if (fullSettings) document.title = '提示词与上下文设置 · X-starter';
@@ -75,6 +76,7 @@ $('settings-form').addEventListener('submit', async event => {
       contextEnabled: $('context-enabled').checked, contextLimit: $('context-limit').value,
       profileHighlightEnabled: $('profile-highlight').checked, profileGapThreshold: $('profile-gap-threshold').value,
       profilePriorityEnabled: $('profile-priority').checked,
+      timelinePriorityEnabled: $('timeline-priority').checked,
       followbackEnabled: $('followback-enabled').checked, followbackAccount: $('followback-account').value,
       ...(fullSettings ? {
         collectWritingSamples: $('collect-writing').checked, useVoiceMemory: $('use-voice-memory').checked,
@@ -84,6 +86,7 @@ $('settings-form').addEventListener('submit', async event => {
     } });
     feedback('已保存，当前 X 页面会立即使用新设置。');
     await refreshFollowback();
+    await refreshPriority();
     await check();
   } catch (error) { feedback(error.message, true); }
   finally { $('save').disabled = false; }
@@ -110,7 +113,7 @@ $('open-panel').addEventListener('click', async () => {
 (async () => {
   try {
     current = await send({ type: 'GET_SETTINGS' });
-    if (!Array.isArray(current.candidatePreferences) || typeof current.conversational !== 'boolean' || typeof current.autoGenerateNoticeVersion !== 'number' || typeof current.collectWritingSamples !== 'boolean' || typeof current.profileHighlightEnabled !== 'boolean') throw new Error('扩展后台仍在运行旧版。请在扩展管理页点击「重新加载」，再刷新 X 和设置页面。');
+    if (!Array.isArray(current.candidatePreferences) || typeof current.conversational !== 'boolean' || typeof current.autoGenerateNoticeVersion !== 'number' || typeof current.collectWritingSamples !== 'boolean' || typeof current.profileHighlightEnabled !== 'boolean' || typeof current.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍在运行旧版。请在扩展管理页点击「重新加载」，再刷新 X 和设置页面。');
     $('port').value = current.port; $('language').value = current.language;
     $('length').value = current.length; $('auto-generate').checked = current.autoGenerate;
     updateAutoNotice();
@@ -119,14 +122,32 @@ $('open-panel').addEventListener('click', async () => {
     $('collect-writing').checked = current.collectWritingSamples; $('use-voice-memory').checked = current.useVoiceMemory;
     $('profile-highlight').checked = current.profileHighlightEnabled; $('profile-gap-threshold').value = current.profileGapThreshold; updateProfileNotice();
     $('profile-priority').checked = current.profilePriorityEnabled;
+    $('timeline-priority').checked = current.timelinePriorityEnabled;
     $('followback-enabled').checked = current.followbackEnabled; $('followback-account').value = current.followbackAccount;
     await refreshFollowback();
+    await refreshPriority();
     if (current.model) { $('model').add(new Option(current.model, current.model)); $('model').value = current.model; }
     $('save').disabled = false;
     await check();
     if (fullSettings) await refreshMemory();
   } catch (error) { feedback(error.message, true); }
 })();
+
+async function refreshPriority() {
+  if (priorityRefreshing) return;
+  priorityRefreshing = true;
+  try {
+    const value = await send({ type: 'PRIORITY_STATUS' });
+    $('priority-status').textContent = `${value.enabled ? '已开启' : '未开启'} · 已缓存 ${value.cached || 0} 位${value.busy ? ' · 正在读取资料' : ''}${value.pending ? ` · 等待 ${value.pending} 位` : ''}${value.pausedUntil > Date.now() ? `。${value.notice} 处理后可清除缓存重试。` : ''}`;
+  } catch (error) { $('priority-status').textContent = error.message; }
+  finally { priorityRefreshing = false; }
+}
+$('clear-priority-cache').addEventListener('click', async () => {
+  $('clear-priority-cache').disabled = true;
+  try { await send({ type: 'CLEAR_PRIORITY_CACHE' }); await refreshPriority(); }
+  catch (error) { $('priority-status').textContent = error.message; }
+  finally { $('clear-priority-cache').disabled = false; }
+});
 
 function updateFollowbackButtons() {
   const value = followbackState, busy = followbackBusy || value?.busy;
@@ -181,7 +202,7 @@ $('followback-identify').addEventListener('click', async () => {
   try { const result = await send({ type: 'FOLLOWBACK_IDENTIFY' }); $('followback-account').value = result.account; $('followback-status').textContent = `已识别 @${result.account}，保存后绑定此账号。`; }
   catch (error) { $('followback-status').textContent = error.message; }
 });
-const followbackPoll = setInterval(() => { if (!document.hidden && !followbackBusy) void refreshFollowback(); }, 5000);
+const followbackPoll = setInterval(() => { if (!document.hidden && !followbackBusy) { void refreshFollowback(); void refreshPriority(); } }, 5000);
 const followbackCountdown = setInterval(updateFollowbackButtons, 1000);
 window.addEventListener('pagehide', () => { clearInterval(followbackPoll); clearInterval(followbackCountdown); });
 

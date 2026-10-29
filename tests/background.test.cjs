@@ -51,7 +51,7 @@ function harness(options = {}) {
 }
 const request = (requestId = 'request_1', force = false) => ({ type: 'GENERATE', requestId, force, source: { url: 'https://x.com/alice/status/123', text: 'UNIQUE_SOURCE_123 小团队先明确验收标准再使用 AI。' } });
 test('X content scripts cannot ask the background to confirm follows or change follow-back lists', async()=>{
-  const h=harness();for(const type of ['FOLLOWBACK_STATUS','FOLLOWBACK_CHECK','FOLLOWBACK_CONFIRM','FOLLOWBACK_IGNORE','FOLLOWBACK_IDENTIFY'])assert.equal((await h.send({type,account:'victim'})).error.code,'DENIED');
+  const h=harness();for(const type of ['FOLLOWBACK_STATUS','FOLLOWBACK_CHECK','FOLLOWBACK_CONFIRM','FOLLOWBACK_IGNORE','FOLLOWBACK_IDENTIFY','PRIORITY_STATUS','CLEAR_PRIORITY_CACHE'])assert.equal((await h.send({type,account:'victim'})).error.code,'DENIED');
 });
 test('real worker dispatch generates four replies via fixed local identity and caches no source body', async () => {
   const h = harness();

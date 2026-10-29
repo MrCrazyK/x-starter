@@ -116,7 +116,8 @@
     onStatus: message => { $('voice-note').textContent = message; },
     onAccountChange: () => { clearAuto(); cancel(); clearCandidates(); status('当前 X 账号已变化，请重新生成。'); }
   });
-  const profiles = MagpieProfile.create();
+  const profiles = MagpieProfile.create({ onRead: profile => { if (state.settings?.timelinePriorityEnabled) void send({ type: 'OBSERVED_PRIORITY_PROFILE', profile }).catch(() => {}); } });
+  const priorityTimeline = MagpiePriorityTimeline.create({ send });
   function busy(value) {
     state.busy = value; $('generate').disabled = value; $('cancel').hidden = !value;
     $('source').disabled = value; $('angle').disabled = value;
@@ -526,10 +527,11 @@
   });
   function reloadSettings() {
     void send({ type: 'GET_SETTINGS' }).then(options => {
-      if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。');
+      if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean' || typeof options.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。');
       state.settings = options; state.attempted.clear(); clearAuto(); cancel(); clearCandidates();
       learning.configure();
       profiles.configure(options);
+      priorityTimeline.configure(options);
       $('preference-labels').textContent = options.candidatePreferences.map(item => item.label).join(' · ');
       state.contextSignature = ''; if (state.target) refreshContext(state.target, true); else renderContext();
       status('设置已更新，点击生成使用新模型。');
@@ -539,16 +541,17 @@
   let routeTimer = setInterval(() => { if (state.route !== location.pathname) scheduleScan(); }, 700);
   window.addEventListener('resize', scheduleLauncher);
   window.visualViewport?.addEventListener('resize', scheduleLauncher);
-  window.addEventListener('pagehide', () => { stopped = true; profiles.stop(); launcherResize.disconnect(); launcherMutations.disconnect(); launcherWatched = []; cancelAnimationFrame(launcherFrame); launcherFrame = 0; observer.disconnect(); clearInterval(routeTimer); clearTimeout(scanTimer); clearAuto(); cancel(); });
+  window.addEventListener('pagehide', () => { stopped = true; profiles.stop(); priorityTimeline.stop(); launcherResize.disconnect(); launcherMutations.disconnect(); launcherWatched = []; cancelAnimationFrame(launcherFrame); launcherFrame = 0; observer.disconnect(); clearInterval(routeTimer); clearTimeout(scanTimer); clearAuto(); cancel(); });
   window.addEventListener('pageshow', event => {
     if (event.persisted && stopped) {
       stopped = false; observer.observe(document.body || document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href'] });
       profiles.configure(state.settings);
+      priorityTimeline.configure(state.settings);
       scheduleLauncher();
       routeTimer = setInterval(() => { if (state.route !== location.pathname) scheduleScan(); }, 700);
       scheduleScan();
     }
   });
-  void send({ type: 'GET_SETTINGS' }).then(options => { if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。'); state.settings = options; learning.configure(); profiles.configure(options); $('preference-labels').textContent = options.candidatePreferences.map(item => item.label).join(' · '); scan(); }).catch(error => status(error.message, 'error'));
+  void send({ type: 'GET_SETTINGS' }).then(options => { if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean' || typeof options.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。'); state.settings = options; learning.configure(); profiles.configure(options); priorityTimeline.configure(options); $('preference-labels').textContent = options.candidatePreferences.map(item => item.label).join(' · '); scan(); }).catch(error => status(error.message, 'error'));
   observer.observe(document.body || document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href'] });
 })();

@@ -80,9 +80,9 @@
     }
     return null;
   }
-  function create() {
+  function create({ onRead } = {}) {
     let options = null, portal = null, timer = null, stopped = false;
-    const painted = new Map();
+    const painted = new Map(), observed = new Map();
     const style = document.createElement('style'); style.id = 'magpie-profile-style';
     style.textContent = `[data-magpie-profile-highlight="true"],[data-magpie-profile-surface="true"]{background-color:var(--magpie-profile-color,${COLOR})!important}[data-magpie-profile-text="true"]{color:#172018!important}`;
     document.documentElement.append(style);
@@ -123,14 +123,19 @@
         if (portal) observer.observe(portal, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'title', 'aria-label', 'data-testid', 'class'] });
       }
       const matches = new Map();
-      if (options?.profileHighlightEnabled || options?.profilePriorityEnabled) for (const scope of document.querySelectorAll(SCOPES)) {
+      if (options?.profileHighlightEnabled || options?.profilePriorityEnabled || options?.timelinePriorityEnabled) for (const scope of document.querySelectorAll(SCOPES)) {
         const links = [...scope.querySelectorAll('a[href]')].map(link => ({ link, info: countLink(link) })).filter(row => row.info && visible(row.link));
         for (const row of links.filter(row => row.info.kind === 'following')) {
           for (const other of links.filter(other => other.info.kind === 'followers' && other.info.account === row.info.account)) {
             const following = readCount(row.link), followers = readCount(other.link);
             const card = findCard(row.link, other.link, scope, row.info.account);
             if (!card) continue;
-            const tone = options.profilePriorityEnabled && priority(following, followers, isVerified(card, row.info.account)) ? 'green' : options.profileHighlightEnabled && qualifies(following, followers, options.profileGapThreshold) ? 'yellow' : '';
+            const verified = isVerified(card, row.info.account);
+            if (options.timelinePriorityEnabled && following !== null && followers !== null) {
+              const value = { account: row.info.account, following, followers, verified }, key = JSON.stringify(value);
+              if (observed.get(value.account) !== key) { observed.set(value.account, key); if (observed.size > 500) observed.delete(observed.keys().next().value); onRead?.(value); }
+            }
+            const tone = options.profilePriorityEnabled && priority(following, followers, verified) ? 'green' : options.profileHighlightEnabled && qualifies(following, followers, options.profileGapThreshold) ? 'yellow' : '';
             if (tone) matches.set(card, { following, followers, tone });
           }
         }
@@ -143,5 +148,5 @@
       for (const card of painted.keys()) restore(card);
     } };
   }
-  globalThis.MagpieProfile = Object.freeze({ COLOR, GREEN, parseCount, qualifies, priority, create });
+  globalThis.MagpieProfile = Object.freeze({ COLOR, GREEN, parseCount, qualifies, priority, countLink, readCount, isVerified, create });
 })();
