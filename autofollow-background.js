@@ -4,7 +4,7 @@
   const A = globalThis.MagpieAutoFollow, C = globalThis.MagpieReply;
   const KEY = 'autoFollowState', SESSION = 'autoFollowTab', ALARM = 'x-starter-auto-follow';
   const SEARCH = 'https://x.com/search?q=' + encodeURIComponent('"蓝v互关"') + '&src=typed_query&f=live';
-  function create({ getSettings, now = () => Date.now(), random = Math.random, timers = { setTimeout: (callback, ms) => setTimeout(callback, ms), clearTimeout: id => clearTimeout(id) } }) {
+  function create({ getSettings, now = () => Date.now(), random = Math.random, onFollow = async () => {}, timers = { setTimeout: (callback, ms) => setTimeout(callback, ms), clearTimeout: id => clearTimeout(id) } }) {
     let accounts = [], running = null, draining = false, timer = null, generation = 0, writes = Promise.resolve();
     const failure = (code, message) => new C.ReplyError('AUTOFOLLOW_' + code, message);
     const persist = () => {
@@ -131,6 +131,7 @@
         value.notice = result.status === 'followed' ? `已关注 @${item.account}。` : result.status === 'requested' ? `已向 @${item.account} 发送关注申请。` : result.reason || `已处理 @${item.account}。`;
         if (result.status === 'uncertain') { value.paused = true; value.notice += ' 任务已暂停，请核实后再恢复；此人不会自动重试。'; }
         await persist();
+        if (result.clicked && ['followed', 'requested'].includes(result.status)) await Promise.resolve().then(() => onFollow({ id: `auto:${job.token}`, account: job.account, target: item.account, source: 'auto', status: result.status, at: now() })).catch(() => {});
       } catch (error) {
         value = ownerState(job.account, settings);
         const flight = value.inFlight;

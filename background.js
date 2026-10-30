@@ -1,5 +1,5 @@
 /* All model requests originate here, never from x.com's origin. */
-importScripts('shared.js', 'memory.js', 'followback.js', 'followback-background.js', 'priority.js', 'priority-background.js', 'autofollow.js', 'autofollow-background.js');
+importScripts('shared.js', 'memory.js', 'followback.js', 'followback-background.js', 'priority.js', 'priority-background.js', 'autofollow.js', 'autofollow-background.js', 'activity.js', 'activity-background.js');
 const C = globalThis.MagpieReply;
 const M = globalThis.MagpieMemory;
 const APP_KEY = 'magpie-x-reply'; // Local application identity, not a vendor API secret.
@@ -10,9 +10,11 @@ const voiceJobs = new Map();
 let memoryQueue = Promise.resolve(), generatedQueue = Promise.resolve();
 
 async function getSettings() { return C.settings((await chrome.storage.local.get('settings')).settings); }
-const followback = chrome.alarms ? MagpieFollowbackBackground.create({ getSettings }) : null;
+const followActivity = MagpieActivityBackground.create({ getSettings });
+const recordFollow = event => followActivity.record(event);
+const followback = chrome.alarms ? MagpieFollowbackBackground.create({ getSettings, onFollow: recordFollow }) : null;
 const priorityProfiles = chrome.alarms ? MagpiePriorityBackground.create({ getSettings }) : null;
-const autoFollow = chrome.alarms ? MagpieAutoFollowBackground.create({ getSettings }) : null;
+const autoFollow = chrome.alarms ? MagpieAutoFollowBackground.create({ getSettings, onFollow: recordFollow }) : null;
 async function hash(value) {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -232,6 +234,11 @@ async function dispatch(message, sender) {
   const type = senderType(sender);
   if (!type || !message || typeof message !== 'object') throw new C.ReplyError('DENIED', '此页面无权调用扩展。');
   switch (message.type) {
+    case 'GET_FOLLOW_ACTIVITY': {
+      const options = await getSettings(), account = MagpieActivity.account(message.account || options.xAccount);
+      if (options.xAccount && account !== options.xAccount) throw new C.ReplyError('DENIED', '请使用统一配置的 X 账号查看关注进度。');
+      return followActivity.snapshot(account);
+    }
     case 'AUTOFOLLOW_AUTHORIZE': {
       if (type !== 'content' || !autoFollow) throw new C.ReplyError('DENIED', '此页面无权执行自动关注。');
       return autoFollow.authorize(message, sender);
@@ -265,6 +272,7 @@ async function dispatch(message, sender) {
     case 'FOLLOWBACK_STATUS':
     case 'FOLLOWBACK_CHECK':
     case 'FOLLOWBACK_IDENTIFY':
+    case 'IDENTIFY_X_ACCOUNT':
     case 'FOLLOWBACK_CONFIRM':
     case 'FOLLOWBACK_IGNORE': {
       if (type !== 'extension') throw new C.ReplyError('DENIED', '请在扩展设置中逐个确认回关。');
@@ -272,7 +280,7 @@ async function dispatch(message, sender) {
       await followback.ready;
       if (message.type === 'FOLLOWBACK_STATUS') return followback.status();
       if (message.type === 'FOLLOWBACK_CHECK') return followback.scan(true);
-      if (message.type === 'FOLLOWBACK_IDENTIFY') return followback.identify();
+      if (['FOLLOWBACK_IDENTIFY', 'IDENTIFY_X_ACCOUNT'].includes(message.type)) return followback.identify();
       if (message.type === 'FOLLOWBACK_IGNORE') return followback.ignore(message.account);
       return followback.confirm(message.account);
     }

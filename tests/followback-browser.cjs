@@ -77,7 +77,7 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
       assert.equal(evidence.scans, 0); assert.deepEqual(evidence.clicks, []);
     });
     await step('enabling checks existing followers and creates a bounded list without clicking Follow', async () => {
-      await popup.locator('#followback-account').fill('@writer'); await popup.locator('#followback-enabled').check(); await save();
+      await popup.locator('#x-account').fill('@writer'); await popup.locator('#followback-enabled').check(); await save();
       const alarm = await worker.evaluate(() => chrome.alarms.get('magpie-followback-scan')); assert.equal(alarm.periodInMinutes, 30);
       for (let i = 0; i < 150 && !(await status()).checkedAt; i++) await popup.waitForTimeout(100);
       const value = await settled(); await refresh();
@@ -96,6 +96,7 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
     await step('one explicit confirmation follows one person exactly once and enforces the ten-second gap', async () => {
       await confirm('alpha').click(); const value = await settled(); await refresh();
       assert.deepEqual(evidence.clicks, ['alpha']); assert.equal(value.items[0].status, 'followed'); assert.equal(value.confirmed, 1);
+      assert.equal((await worker.evaluate(() => followActivity.snapshot('writer'))).total, 1);
       assert.equal(await confirm('alpha').isEnabled(), false); assert.equal(await confirm('beta').isEnabled(), false);
       const blocked = await send({ type: 'FOLLOWBACK_CONFIRM', account: 'beta' });
       assert.equal(blocked.ok, false); assert.equal(blocked.error.code, 'FOLLOWBACK_COOLDOWN'); assert.deepEqual(evidence.clicks, ['alpha']);
@@ -103,6 +104,7 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
     await step('a private profile records a pending request without retrying', async () => {
       modes.beta = 'private'; await allowNext(); await confirm('beta').click(); const value = await settled(); await refresh();
       assert.deepEqual(evidence.clicks, ['alpha', 'beta']); assert.equal(value.items.find(row => row.account === 'beta').status, 'requested');
+      assert.equal((await worker.evaluate(() => followActivity.snapshot('writer'))).total, 2);
     });
     await step('a person who no longer follows the bound account is not followed', async () => {
       modes.gamma = 'not-follower'; await allowNext(); await confirm('gamma').click(); const value = await settled();

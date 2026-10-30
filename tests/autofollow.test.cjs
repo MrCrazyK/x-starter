@@ -29,8 +29,8 @@ async function harness(options = {}) {
   } });
   for (const file of ['shared.js', 'autofollow.js', 'autofollow-background.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), sandbox);
   const C = sandbox.MagpieReply, A = sandbox.MagpieAutoFollow;
-  settings = C.settings({ autoFollowAccount: 'writer', ...options.settings });
-  manager = sandbox.MagpieAutoFollowBackground.create({ getSettings: async () => settings, now: () => clock, random: () => options.random ?? .5, timers: { setTimeout: () => 1, clearTimeout() {} } });
+  settings = C.settings({ xAccount: 'writer', ...options.settings });
+  manager = sandbox.MagpieAutoFollowBackground.create({ getSettings: async () => settings, onFollow: options.onFollow, now: () => clock, random: () => options.random ?? .5, timers: { setTimeout: () => 1, clearTimeout() {} } });
   await manager.ready;
   return { manager, C, A, local, actions, clicks, tabs, closed, session, alarms, now: () => clock, advance: ms => { clock += ms; }, settings: () => settings,
     configure: async patch => { const previous = settings; settings = C.settings({ ...settings, ...patch }); await manager.configure(previous, settings); },
@@ -38,10 +38,10 @@ async function harness(options = {}) {
 }
 test('automatic-follow settings default off, normalize accounts and reject missing binding or invalid limits', async () => {
   const h = await harness(), defaults = h.C.settings();
-  assert.equal(defaults.autoFollowEnabled, false); assert.equal(defaults.autoFollowInterval, 30); assert.equal(defaults.autoFollowPerRound, 20); assert.equal(defaults.autoFollowDaily, 50);
+  assert.equal(defaults.autoFollowEnabled, false); assert.equal(defaults.autoFollowInterval, 30); assert.equal(defaults.autoFollowPerRound, 20); assert.equal(defaults.autoFollowDaily, 400);
   assert.throws(() => h.C.settings({ autoFollowEnabled: true }), { code: 'PREFERENCES' });
   assert.equal(h.C.settings({ autoFollowAccount: '@Writer' }).autoFollowAccount, 'writer');
-  for (const patch of [{ autoFollowInterval: 0 }, { autoFollowInterval: '' }, { autoFollowDaily: 201 }, { autoFollowPerRound: 1.5 }, { autoFollowPerRound: true }, { autoFollowAccount: '../bad' }]) assert.throws(() => h.C.settings(patch), { code: 'PREFERENCES' });
+  for (const patch of [{ autoFollowInterval: 0 }, { autoFollowInterval: '' }, { autoFollowDaily: 401 }, { autoFollowPerRound: 1.5 }, { autoFollowPerRound: true }, { autoFollowAccount: '../bad' }]) assert.throws(() => h.C.settings(patch), { code: 'PREFERENCES' });
   assert.equal(h.A.delay(() => 0), 5000); assert.equal(h.A.delay(() => 1), 10000);
 });
 test('followers need only blue and a current follows-you relationship; search needs the strict green-frame counts', async () => {
@@ -154,8 +154,8 @@ test('fewer than five remaining candidates triggers one bounded refill and full 
 });
 test('switching bound accounts retains the original account limits and ignored people', async () => {
   const h = await harness(); await h.enable(); await h.manager.tick(); await h.manager.ignore('search0'); await h.manager.tick();
-  await h.configure({ autoFollowAccount: 'other' }); assert.equal((await h.manager.status()).dayUsed, 0);
-  await h.configure({ autoFollowAccount: 'writer' }); const value = await h.manager.status();
+  await h.configure({ xAccount: 'other' }); assert.equal((await h.manager.status()).dayUsed, 0);
+  await h.configure({ xAccount: 'writer' }); const value = await h.manager.status();
   assert.equal(value.dayUsed, 1); assert.equal(value.ignored.includes('search0'), true); assert.equal(value.queue.some(row => row.account === 'search0'), false);
 });
 test('profile validation work is bounded even when every search author is rejected', async () => {
@@ -184,4 +184,12 @@ test('a tab completing navigation during its readiness response is checked using
   const h = await harness({ staleSnapshot: true }); await h.enable(); await h.manager.tick();
   assert.equal((await h.manager.status()).paused, false); assert.equal((await h.manager.status()).queue.length, 20);
   await h.manager.tick(); assert.deepEqual(h.clicks, ['fan']);
+});
+test('only actual confirmed follows emit one success event; skipped or uncertain results never emit one', async () => {
+  const events = [], h = await harness({ onFollow: event => events.push(event) });
+  await h.enable(); await h.manager.tick(); await h.manager.tick(); assert.equal(events.length, 1); assert.equal(events[0].target, 'fan'); assert.equal(events[0].source, 'auto');
+  for (const result of [{ status: 'already', clicked: false }, { status: 'skipped', clicked: false }, { status: 'uncertain', clicked: true }]) {
+    const h = await harness({ follow: async () => ({ ok: true, data: result }), onFollow: event => events.push(event) }); await h.enable(); await h.manager.tick(); await h.manager.tick();
+  }
+  assert.equal(events.length, 1);
 });

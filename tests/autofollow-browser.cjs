@@ -27,6 +27,8 @@ function fixture(url) {
   }
   if (mode.foreignBlue) body += '<script>document.querySelector(\'[data-testid="UserName"]\').insertAdjacentHTML("beforeend",' + JSON.stringify('<a href="/stranger">Affiliation' + badge('blue') + '</a>') + ')</script>';
   if (mode.splitControls) body += '<script>{const root=document.getElementById("profile"),info=document.createElement("div");for(const node of [...root.children])if(node.id!=="target-follow")info.append(node);root.append(info);}</script>';
+  if (mode.genericError) body += '<p role="alert">Something went wrong. Try again later.</p>';
+  if (mode.optimisticError || mode.revert) body += '<script>document.getElementById("target-follow").addEventListener("click",()=>setTimeout(()=>{' + (mode.optimisticError ? 'const alert=document.createElement("p");alert.setAttribute("role","alert");alert.textContent="关注失败，请稍后重试";document.body.append(alert);' : 'const button=document.getElementById("target-follow");button.dataset.testid=' + JSON.stringify(target + '-follow') + ';button.textContent="Follow";') + '},650));</script>';
   return `<!doctype html><html><meta charset="utf-8"><title>Synthetic X auto-follow fixture</title><style>body{font:16px/1.6 sans-serif;margin:20px}main{max-width:680px}section,article{padding:15px;background:#eef4f2}button{padding:10px;margin:8px}a{margin-right:12px}[data-testid="UserCell"]{padding:8px;border-bottom:1px solid #ccc}</style>${nav}<main><div data-testid="primaryColumn">${body}</div></main></html>`;
 }
 const server = http.createServer((req, res) => {
@@ -71,7 +73,7 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
     const off = async () => { await popup.locator('#autofollow-enabled').uncheck(); await save(); await waitFor(value => !value.busy); };
     const start = async (account, fanNames, searchNames, profileModes, limits = {}) => {
       await off(); owner = account; followers = fanNames; search = searchNames; modes = profileModes;
-      await popup.locator('#autofollow-account').fill('@' + account); await popup.locator('#autofollow-round').fill(String(limits.round || 1)); await popup.locator('#autofollow-daily').fill(String(limits.daily || 1));
+      await popup.locator('#x-account').fill('@' + account); await popup.locator('#autofollow-round').fill(String(limits.round || 1)); await popup.locator('#autofollow-daily').fill(String(limits.daily || 1));
       await popup.locator('#autofollow-enabled').check(); await save();
     };
     async function readScan(source) {
@@ -83,9 +85,9 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
       }, { target, source, account: owner });
       await page.close(); assert.equal(result.ok, true, JSON.stringify(result)); return result.data;
     }
-    await step('fresh settings show an off switch and thirty-minute/twenty/fifty defaults without opening X', async () => {
+    await step('fresh settings show one shared account and thirty-minute/twenty/four-hundred defaults without opening X', async () => {
       assert.equal(await popup.locator('#autofollow-enabled').isChecked(), false);
-      assert.equal(await popup.locator('#autofollow-interval').inputValue(), '30'); assert.equal(await popup.locator('#autofollow-round').inputValue(), '20'); assert.equal(await popup.locator('#autofollow-daily').inputValue(), '50');
+      assert.equal(await popup.locator('#autofollow-interval').inputValue(), '30'); assert.equal(await popup.locator('#autofollow-round').inputValue(), '20'); assert.equal(await popup.locator('#autofollow-daily').inputValue(), '400'); assert.equal(await popup.locator('input[placeholder="@用户名"]').count(), 1);
       assert.equal(await worker.evaluate(() => chrome.alarms.get('x-starter-auto-follow')), undefined); assert.equal(evidence.clicks.length, 0);
     });
     await step('follower reads reject plain/gold/grey badges and already-followed or pending rows', async () => {
@@ -102,11 +104,13 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
       await start('roundtest', ['tinyfan'], ['searchgood'], { tinyfan: { following: 10, followers: 20, splitControls: true } }, { round: 2, daily: 2 });
       const first = await waitFor(value => value.history.length === 1 && !value.busy);
       assert.equal(first.history[0].account, 'tinyfan'); assert.equal(first.history[0].status, 'followed', JSON.stringify(first)); assert.equal(first.dayUsed, 1);
+      assert.equal((await worker.evaluate(() => followActivity.snapshot('roundtest'))).total, 1);
       const planned = first.nextAllowedAt - evidence.clicks.at(-1).at; assert.ok(planned >= 5000 && planned <= 11500, String(planned));
       await popup.locator('#autofollow-refresh').click(); await popup.locator('.autofollow-options details').first().evaluate(node => { node.open = true; }); await popup.locator('.autofollow-history').evaluate(node => { node.open = true; });
       await popup.locator('.autofollow-options').screenshot({ path: path.join(output, 'autofollow-settings.png') });
       const second = await waitFor(value => value.history.length === 2 && !value.busy);
       assert.equal(second.history[0].account, 'searchgood'); assert.equal(second.dayUsed, 2); assert.equal(second.roundUsed, 2);
+      assert.equal((await worker.evaluate(() => followActivity.snapshot('roundtest'))).total, 2);
       const pair = evidence.clicks.filter(row => row.account === 'roundtest'); assert.equal(pair.length, 2); assert.ok(pair[1].at - pair[0].at >= 5000);
       await worker.evaluate(() => autoFollow.tick()); assert.equal(evidence.clicks.filter(row => row.account === 'roundtest').length, 2);
     });
@@ -142,6 +146,18 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
     await step('X verification or follow restrictions pause the task and clear its timer alarm', async () => {
       await start('blockedtest', ['limitedfan'], [], { limitedfan: { blocked: true } });
       const value = await waitFor(value => value.paused && !value.busy); assert.match(value.notice, /验证|限制/); assert.equal(await worker.evaluate(() => chrome.alarms.get('x-starter-auto-follow')), undefined); assert.equal(evidence.clicks.some(row => row.target === 'limitedfan'), false);
+    });
+    await step('generic follow errors pause before a click and do not count as success', async () => {
+      await start('genericerr', ['errorfan'], [], { errorfan: { genericError: true } });
+      const value = await waitFor(value => value.paused && !value.busy); assert.match(value.notice, /错误/); assert.equal(evidence.clicks.some(row => row.target === 'errorfan'), false); assert.equal((await worker.evaluate(() => followActivity.snapshot('genericerr'))).total, 0);
+    });
+    await step('an optimistic Following button followed by an error stops the task without +1', async () => {
+      await start('lateerr', ['latefan'], [], { latefan: { optimisticError: true } });
+      const value = await waitFor(value => value.paused && !value.busy); assert.match(value.notice, /错误/); assert.equal(evidence.clicks.filter(row => row.target === 'latefan').length, 1); assert.equal((await worker.evaluate(() => followActivity.snapshot('lateerr'))).total, 0);
+    });
+    await step('a Following button reverting to Follow pauses instead of reporting a successful follow', async () => {
+      await start('rollback', ['rollbackfan'], [], { rollbackfan: { revert: true } });
+      const value = await waitFor(value => value.paused && !value.busy); assert.match(value.notice, /回退/); assert.equal((await worker.evaluate(() => followActivity.snapshot('rollback'))).total, 0);
     });
     await step('an uncertain click result pauses and is never retried on resume', async () => {
       await start('unknowntest', ['unknownfan'], [], { unknownfan: { unknown: true } });

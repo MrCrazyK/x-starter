@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const F = globalThis.MagpieFollowback, C = globalThis.MagpieReply, KEY = 'followbackState', ALARM = 'magpie-followback-scan';
-  function create({ getSettings, now = () => Date.now() }) {
+  function create({ getSettings, now = () => Date.now(), onFollow = async () => {} }) {
     let running = null, queue = Promise.resolve();
     const failure = (code, text) => new C.ReplyError(code, text);
     async function read(owner) { return F.state((await chrome.storage.local.get(KEY))[KEY], owner, now()); }
@@ -110,6 +110,7 @@
             value.confirmed++; value.nextAllowedAt = now() + F.GAP;
             value.notice = state === 'followed' ? `已回关 @${name}。` : state === 'requested' ? `已向 @${name} 发送关注请求，等待对方批准。` : `未确认 @${name} 的结果，请打开资料核实，插件不会自动重试。`;
           });
+          if (result.clicked === true && ['followed', 'requested'].includes(state)) await Promise.resolve().then(() => onFollow({ id: `manual:${job.token}`, account: owner, target: name, source: 'manual', status: state, at: now() })).catch(() => {});
           return status();
         } catch (error) {
           await change(owner, value => {
@@ -141,13 +142,15 @@
       if (changed || !await chrome.alarms.get(ALARM)) await chrome.alarms.create(ALARM, { when: now() + (changed ? 1000 : F.PERIOD), periodInMinutes: 30 });
     }
     async function identify() {
-      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      const selected = tabs.find(tab => C.xURL(tab.url));
-      if (!selected) throw failure('FOLLOWBACK_ACCOUNT', '请先切到已登录的 X 页面，再点击识别账号。');
-      const result = await chrome.tabs.sendMessage(selected.id, { type: 'FOLLOWBACK_ACCOUNT' });
-      const account = F.account(result?.data?.account);
-      if (!result?.ok || !account) throw failure('FOLLOWBACK_ACCOUNT', '未识别当前账号，请先登录 X，更新扩展后需刷新 X。');
-      return { account };
+      const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const activeX = activeTabs.find(tab => C.xURL(tab.url));
+      const tabs = activeX ? [activeX] : (await chrome.tabs.query({ lastFocusedWindow: true })).filter(tab => C.xURL(tab.url)).slice(-5);
+      if (!tabs.length) throw failure('FOLLOWBACK_ACCOUNT', '请先打开并登录一个 X 标签页，再点击识别账号。');
+      const results = await Promise.allSettled(tabs.map(tab => chrome.tabs.sendMessage(tab.id, { type: 'FOLLOWBACK_ACCOUNT' })));
+      const names = [...new Set(results.filter(row => row.status === 'fulfilled' && row.value?.ok).map(row => F.account(row.value.data?.account)).filter(Boolean))];
+      if (names.length > 1) throw failure('FOLLOWBACK_ACCOUNT', 'X 标签页识别到不同账号，请刷新 X 标签页，或在上方填写要使用的用户名。');
+      if (!names.length) throw failure('FOLLOWBACK_ACCOUNT', '未识别当前账号，请先登录 X，更新扩展后需刷新 X。');
+      return { account: names[0] };
     }
     chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) void scan(false).catch(() => {}); });
     const ready = (async () => {

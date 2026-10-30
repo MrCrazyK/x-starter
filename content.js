@@ -88,7 +88,7 @@
       size = Math.round(reference.box.width * 100) / 100;
       const column = controls.filter(({ box }) => Math.abs(box.right - reference.box.right) <= 8).sort((a, b) => a.box.top - b.box.top);
       const gaps = column.slice(1).map((item, i) => item.box.top - column[i].box.bottom).filter(gap => gap >= 4 && gap <= 32);
-      const gap = gaps.length ? Math.min(...gaps) : 12;
+      const gap = Math.max(14, gaps.length ? Math.min(...gaps) : 12);
       let top = column[0].box.top - gap - size;
       right = width - reference.box.right;
       if (top < 8) { right += size + gap; top = Math.max(8, column[0].box.top); }
@@ -114,9 +114,10 @@
   const learning = MagpieLearning.create({ getSettings: () => state.settings, send,
     replyTarget: editor => targetForEditor(editor)?.source.url,
     onStatus: message => { $('voice-note').textContent = message; },
-    onAccountChange: () => { clearAuto(); cancel(); clearCandidates(); status('当前 X 账号已变化，请重新生成。'); }
+    onAccountChange: () => { clearAuto(); cancel(); clearCandidates(); followProgress.configure(); status('当前 X 账号已变化，请重新生成。'); }
   });
   const profiles = MagpieProfile.create({ onRead: profile => { if (state.settings?.timelinePriorityEnabled) void send({ type: 'OBSERVED_PRIORITY_PROFILE', profile }).catch(() => {}); } });
+  const followProgress = MagpieLauncherProgress.create({ launcher: $('launcher'), send, getSettings: () => state.settings, getAccount: () => learning.currentAccount() });
   const priorityTimeline = MagpiePriorityTimeline.create({ send });
   function busy(value) {
     state.busy = value; $('generate').disabled = value; $('cancel').hidden = !value;
@@ -530,6 +531,7 @@
       if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean' || typeof options.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。');
       state.settings = options; state.attempted.clear(); clearAuto(); cancel(); clearCandidates();
       learning.configure();
+      followProgress.configure();
       profiles.configure(options);
       priorityTimeline.configure(options);
       $('preference-labels').textContent = options.candidatePreferences.map(item => item.label).join(' · ');
@@ -541,17 +543,18 @@
   let routeTimer = setInterval(() => { if (state.route !== location.pathname) scheduleScan(); }, 700);
   window.addEventListener('resize', scheduleLauncher);
   window.visualViewport?.addEventListener('resize', scheduleLauncher);
-  window.addEventListener('pagehide', () => { stopped = true; profiles.stop(); priorityTimeline.stop(); launcherResize.disconnect(); launcherMutations.disconnect(); launcherWatched = []; cancelAnimationFrame(launcherFrame); launcherFrame = 0; observer.disconnect(); clearInterval(routeTimer); clearTimeout(scanTimer); clearAuto(); cancel(); });
+  window.addEventListener('pagehide', () => { stopped = true; profiles.stop(); priorityTimeline.stop(); followProgress.stop(); launcherResize.disconnect(); launcherMutations.disconnect(); launcherWatched = []; cancelAnimationFrame(launcherFrame); launcherFrame = 0; observer.disconnect(); clearInterval(routeTimer); clearTimeout(scanTimer); clearAuto(); cancel(); });
   window.addEventListener('pageshow', event => {
     if (event.persisted && stopped) {
       stopped = false; observer.observe(document.body || document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href'] });
       profiles.configure(state.settings);
+      followProgress.configure();
       priorityTimeline.configure(state.settings);
       scheduleLauncher();
       routeTimer = setInterval(() => { if (state.route !== location.pathname) scheduleScan(); }, 700);
       scheduleScan();
     }
   });
-  void send({ type: 'GET_SETTINGS' }).then(options => { if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean' || typeof options.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。'); state.settings = options; learning.configure(); profiles.configure(options); priorityTimeline.configure(options); $('preference-labels').textContent = options.candidatePreferences.map(item => item.label).join(' · '); scan(); }).catch(error => status(error.message, 'error'));
+  void send({ type: 'GET_SETTINGS' }).then(options => { if (!Array.isArray(options.candidatePreferences) || typeof options.conversational !== 'boolean' || typeof options.autoGenerateNoticeVersion !== 'number' || typeof options.collectWritingSamples !== 'boolean' || typeof options.profileHighlightEnabled !== 'boolean' || typeof options.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍是旧版，请重新加载扩展并刷新 X。'); state.settings = options; learning.configure(); followProgress.configure(); profiles.configure(options); priorityTimeline.configure(options); $('preference-labels').textContent = options.candidatePreferences.map(item => item.label).join(' · '); scan(); }).catch(error => status(error.message, 'error'));
   observer.observe(document.body || document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href'] });
 })();

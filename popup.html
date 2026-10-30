@@ -11,13 +11,17 @@
 </head>
 <body>
   <main>
-    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.7.0</span></header>
+    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.8.0</span></header>
     <section class="connection" aria-label="Magpie 连接">
       <div class="connection-title"><span id="connection-dot" class="dot"></span><strong id="connection-label">正在寻找 Magpie</strong><span class="tag">本机连接</span></div>
       <p id="connection-detail">复用 Magpie 已接入的模型，无需填写 API Key。</p>
     </section>
     <form id="settings-form">
       <div class="settings-layout"><section class="general-panel" aria-label="模型与上下文设置">
+      <fieldset class="account-options"><legend>X 账号 · 统一配置</legend>
+        <label for="x-account">X 用户名</label><div class="followback-account-row"><input id="x-account" type="text" maxlength="16" placeholder="@用户名" autocomplete="off" spellcheck="false"><button id="x-identify" class="secondary" type="button">识别账号</button></div>
+        <p class="field-help">只填一次，自动关注与手动回关共用。浏览器登录账号变化时暂停关注。</p><p id="account-status" class="field-help" role="status"></p>
+      </fieldset>
       <label for="model">回复模型 <span>从 Magpie 自动读取</span></label>
       <select id="model"><option value="">自动选择（优先路由组）</option></select>
       <div class="row"><div><label for="language">回复语言</label><select id="language"><option value="auto">跟随原文</option><option value="zh">简体中文</option><option value="en">English</option></select></div><div><label for="length">回复长度</label><select id="length"><option value="short">简短 · 1–2 句</option><option value="medium">适中 · 1–3 句</option></select></div></div>
@@ -38,11 +42,12 @@
       </fieldset>
       <fieldset class="autofollow-options"><legend>定时自动关注</legend>
         <label class="toggle"><input id="autofollow-enabled" type="checkbox"><span><strong>自动关注</strong><small>默认关闭。勾选并保存后，按下方规则自动点击关注，无需逐人确认。</small></span></label>
-        <label for="autofollow-account">执行关注的 X 用户名</label><div class="followback-account-row"><input id="autofollow-account" type="text" maxlength="16" placeholder="@用户名" autocomplete="off" spellcheck="false"><button id="autofollow-identify" class="secondary" type="button">识别账号</button></div>
-        <div class="autofollow-limits"><label for="autofollow-interval">每轮间隔（分钟）<input id="autofollow-interval" type="number" min="5" max="1440" value="30" required></label><label for="autofollow-round">每轮最多关注<input id="autofollow-round" type="number" min="1" max="100" value="20" required></label><label for="autofollow-daily">每天最多关注<input id="autofollow-daily" type="number" min="1" max="200" value="50" required></label></div>
+        <p class="field-help">使用上方统一配置的 X 账号。</p>
+        <div class="autofollow-limits"><label for="autofollow-interval">每轮间隔（分钟）<input id="autofollow-interval" type="number" min="5" max="1440" value="30" required></label><label for="autofollow-round">每轮最多关注<input id="autofollow-round" type="number" min="1" max="100" value="20" required></label><label for="autofollow-daily">每天最多关注<input id="autofollow-daily" type="number" min="1" max="400" value="400" required></label></div>
         <ol class="autofollow-rules"><li>优先：粉丝列表里的蓝 V，跳过已关注或已申请的人。</li><li>其次：搜索“蓝v互关”的帖子，只选蓝 V 且关注数 &gt; 粉丝数 &gt; 500 的作者。</li></ol>
         <p class="field-help">队列最多 20 人，低于 5 人时补到 20 人。关注完成后随机等待 5–10 秒，再处理下一位；页面加载可能让实际间隔更长。每天的用量在北京时间 00:00 重置，暂停和重开不会清零。</p>
         <p class="field-help">浏览器运行且登录绑定账号时执行；遇到验证、限制、账号变化或结果不明会暂停。不会取消关注，也不调用模型。</p>
+        <p class="field-help">右下角图标外环显示今日成功数 / 每日上限。插件自动关注、插件内确认回关成功或发送申请后弹出 +1；失败、跳过和已有关注不计。统计按北京时间换日。</p>
         <p class="field-help autofollow-risk">X 的规则禁止网页脚本自动操作；随机间隔不能保证避免账号限制。<a href="https://help.x.com/en/rules-and-policies/x-automation" target="_blank" rel="noopener noreferrer">查看规则 ↗</a></p>
         <div class="followback-toolbar"><button id="autofollow-pause" class="secondary" type="button">立即暂停</button><button id="autofollow-resume" class="secondary" type="button">恢复执行</button><button id="autofollow-refresh" class="text-button" type="button">刷新状态</button></div>
         <p id="autofollow-status" class="field-help" role="status" aria-live="polite"></p><p id="autofollow-meta" class="field-help"></p>
@@ -51,7 +56,7 @@
       </fieldset>
       <fieldset class="followback-options"><legend>定期回关名单 · 手动确认</legend>
         <label class="toggle"><input id="followback-enabled" type="checkbox"><span><strong>定期整理回关名单</strong><small>每半小时检查粉丝列表，包含现有粉丝。每轮最多 5 人，需逐个点击确认回关，间隔至少 10 秒。</small></span></label>
-        <label for="followback-account">绑定的 X 用户名</label><div class="followback-account-row"><input id="followback-account" type="text" maxlength="16" placeholder="@用户名" autocomplete="off" spellcheck="false"><button id="followback-identify" class="secondary" type="button">识别账号</button></div>
+        <p class="field-help">使用上方统一配置的 X 账号。</p>
         <p class="field-help">浏览器运行且登录该账号时检查；会临时打开后台标签页。只整理名单，不会自动点击关注。遇到账号切换、验证或限制会暂停。</p>
         <div class="followback-toolbar"><button id="followback-check" class="secondary" type="button">立即检查</button><button id="followback-refresh" class="text-button" type="button">刷新状态</button></div>
         <p id="followback-status" class="field-help" role="status" aria-live="polite"></p><p id="followback-meta" class="field-help"></p><div id="followback-list"></div>
@@ -71,7 +76,7 @@
           <label class="toggle"><input id="collect-writing" type="checkbox"><span><strong>收集手写发布</strong><small>仅收集这台浏览器确认发布成功的新帖和回复。用过插件候选的草稿不作为样本；收集过程不调用模型。</small></span></label>
           <label class="toggle"><input id="use-voice-memory" type="checkbox"><span><strong>生成回复时参考语气记忆</strong><small>按当前 X 账号使用自己的记忆。只学习说话习惯，仍遵守严格限制与每条候选要求。</small></span></label>
           <p class="field-help">这两个开关随「保存设置」生效。样本和 Markdown 保存在扩展本地，最多保留 5 个账号、每个账号最近 80 条，每条最多 3000 字符。</p>
-          <label for="memory-account">X 账号</label><select id="memory-account"><option value="">尚未收集到手写内容</option></select>
+          <label for="memory-account">查看语气记忆的账号</label><select id="memory-account"><option value="">尚未收集到手写内容</option></select><p class="field-help">这里切换查看已保存的记忆；关注任务使用上方统一配置的账号。</p>
           <p id="memory-meta" class="field-help">先在 X 手写并发布一条帖子或回复，再点刷新样本。</p>
           <div class="memory-actions"><button id="memory-update" class="secondary" type="button" disabled>更新语气记忆</button><button id="memory-export" class="secondary" type="button" disabled>导出 Markdown</button></div>
           <p class="field-help">更新时才会通过 Magpie 将这个账号的手写样本发给已保存的回复模型，并重写总结。生成候选时只参考总结，不附带整份样本记录。</p>

@@ -15,7 +15,7 @@ async function harness(options={}){
   }}
  }});
  for(const file of ['shared.js','followback.js','followback-background.js'])vm.runInContext(fs.readFileSync(path.join(folder,file),'utf8'),sandbox);
- const manager=sandbox.MagpieFollowbackBackground.create({getSettings:async()=>settings,now:()=>clock});await manager.ready;
+ const manager=sandbox.MagpieFollowbackBackground.create({getSettings:async()=>settings,onFollow:options.onFollow,now:()=>clock});await manager.ready;
  return{manager,local,actions,tabs,closed,alarm:()=>alarm,advance:ms=>clock+=ms,F:sandbox.MagpieFollowback,C:sandbox.MagpieReply,
   enable:async(value=true,account='writer')=>{const prev=settings;settings={followbackEnabled:value,followbackAccount:account};await manager.configure(prev,settings)},automatic:(value=true,account='writer')=>{settings={...settings,autoFollowEnabled:value,autoFollowAccount:account}},fire:()=>alarmHandler({name:'magpie-followback-scan'})};
 }
@@ -83,4 +83,10 @@ test('the same account cannot manually confirm a follow while automatic followin
  assert.equal((await h.manager.status()).automaticLocked,true);
  await assert.rejects(h.manager.confirm('person0'),{code:'FOLLOWBACK_BUSY'});assert.equal(h.actions.filter(row=>row.type==='FOLLOWBACK_CONFIRM_PAGE').length,0);
  h.automatic(false);await h.manager.confirm('person0');assert.equal((await h.manager.status()).items[0].status,'followed');
+});
+test('manual confirmation emits +1 only for an actual successful click, not an existing relationship',async()=>{
+ const events=[],h=await harness({onFollow:event=>events.push(event)});await h.enable();await h.manager.scan();await h.manager.confirm('person0');
+ assert.equal(events.length,1);assert.equal(events[0].source,'manual');assert.equal(events[0].target,'person0');
+ const existing=await harness({onFollow:event=>events.push(event),respond:message=>message.type==='FOLLOWBACK_SCAN_PAGE'?{ok:true,data:{account:'writer',items:[{account:'person0'}]}}:{ok:true,data:{status:'followed',clicked:false}}});
+ await existing.enable();await existing.manager.scan();await existing.manager.confirm('person0');assert.equal(events.length,1);
 });

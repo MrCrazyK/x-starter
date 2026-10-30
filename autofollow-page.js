@@ -20,7 +20,7 @@
     if (cancelled.has(message.token)) throw fail('CANCELLED', '已停止本次自动关注。');
     if (/^\/(?:i\/flow\/login|login|account\/access)(?:\/|$)/u.test(location.pathname) || document.querySelector('iframe[src*="arkoselabs"],iframe[src*="captcha"]')) throw fail('BLOCKED', 'X 需要登录或验证，自动关注已暂停。');
     const notices = [...document.querySelectorAll('[role="alert"],[data-testid="toast"],[data-testid="error-detail"],[data-testid="error-message"]')].filter(visible).map(node => node.innerText).join(' ');
-    if (/rate limit|temporarily restricted|unable to follow|account.*(?:locked|suspended)|unusual activity|verify your|too many|达到.*上限|操作.*频繁|账户.*(?:限制|锁定)|账号.*(?:限制|锁定)|验证.*身份|请.*验证/iu.test(notices)) throw fail('BLOCKED', 'X 显示验证或操作限制，自动关注已暂停。');
+    if (/rate limit|temporarily restricted|unable to follow|cannot follow|can['’]t follow|could(?:n['’]t| not) follow|follow.*(?:failed|limit|error)|something went wrong|try again later|account.*(?:locked|suspended)|unusual activity|verify your|too many|达到.*上限|操作.*频繁|账户.*(?:限制|锁定)|账号.*(?:限制|锁定)|验证.*身份|请.*验证|关注失败|无法关注|不能关注|禁止.*关注|发生.*错误|出了.*问题|出错|请求失败|稍后.*重试/iu.test(notices)) throw fail('BLOCKED', 'X 显示关注错误、验证或操作限制，自动关注已暂停。');
     if (currentAccount() !== message.account) throw fail('ACCOUNT', `当前登录账号与 @${message.account} 不一致，自动关注已暂停。`);
   }
   async function ready(message) {
@@ -144,11 +144,14 @@
     if (buttons.length !== 1 || buttons[0].disabled || buttons[0].getAttribute('aria-disabled') === 'true') return { status: 'skipped', clicked: false, reason: '没有唯一可用的关注按钮，跳过。' };
     buttons[0].click();
     try {
-      for (let count = 0; count < 20; count++) {
+      let confirmed = '', stableAt = 0;
+      for (let count = 0; count < 32; count++) {
         await pause(250); check(message);
         if (location.pathname.replace(/\/$/u, '').toLowerCase() !== `/${target}`) throw fail('SOURCE', '页面已切换，请手动核实关注结果。');
         const current = header(target), result = current && relationship(current.scope);
-        if (result) return { status: result, clicked: true };
+        if (!result && confirmed) throw fail('BLOCKED', 'X 的关注状态已回退，自动关注已暂停，请核实。');
+        if (result !== confirmed) { confirmed = result || ''; stableAt = Date.now(); }
+        if (result && Date.now() - stableAt >= 1500) return { status: result, clicked: true };
       }
     } catch (error) { error.clicked = true; throw error; }
     return { status: 'uncertain', clicked: true, reason: '关注结果未确认，不会自动重试。' };

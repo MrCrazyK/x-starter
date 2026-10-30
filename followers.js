@@ -18,7 +18,7 @@
     if (cancelled.has(token)) throw new C.ReplyError('FOLLOWBACK_CANCELLED', '已取消本次回关操作。');
     if (/^\/(?:i\/flow\/login|login|account\/access)(?:\/|$)/u.test(location.pathname)) throw new C.ReplyError('FOLLOWBACK_BLOCKED', 'X 需要登录或验证，已暂停。');
     const alerts = [...document.querySelectorAll('[role="alert"], [data-testid="toast"], [data-testid="error-detail"], [data-testid="error-message"]')].filter(visible).map(node => node.innerText).join(' ');
-    if (/rate limit|temporarily restricted|unable to follow|account.*(?:locked|suspended)|unusual activity|verify your|too many|达到.*上限|操作.*频繁|账户.*(?:限制|锁定)|账号.*(?:限制|锁定)|验证.*身份|请.*验证/iu.test(alerts)) throw new C.ReplyError('FOLLOWBACK_BLOCKED', 'X 显示验证或操作限制，已暂停，请先在 X 处理。');
+    if (/rate limit|temporarily restricted|unable to follow|cannot follow|can['’]t follow|could(?:n['’]t| not) follow|follow.*(?:failed|limit|error)|something went wrong|try again later|account.*(?:locked|suspended)|unusual activity|verify your|too many|达到.*上限|操作.*频繁|账户.*(?:限制|锁定)|账号.*(?:限制|锁定)|验证.*身份|请.*验证|关注失败|无法关注|不能关注|禁止.*关注|发生.*错误|出了.*问题|出错|请求失败|稍后.*重试/iu.test(alerts)) throw new C.ReplyError('FOLLOWBACK_BLOCKED', 'X 显示关注错误、验证或操作限制，已暂停，请先在 X 处理。');
     if (currentAccount() !== owner) throw new C.ReplyError('FOLLOWBACK_ACCOUNT', `当前登录账号与 @${owner} 不一致，已暂停。`);
   }
   function followButton(scope, name) {
@@ -119,11 +119,14 @@
     // This is the only follow click. It runs only after a per-person settings-page confirmation.
     button.click();
     try {
-      for (let attempt = 0; attempt < 20; attempt++) {
+      let confirmed = '', stableAt = 0;
+      for (let attempt = 0; attempt < 32; attempt++) {
         await pause(250); check(owner, message.token);
         if (location.pathname.replace(/\/$/u, '').toLowerCase() !== `/${target}`) throw new C.ReplyError('FOLLOWBACK_SOURCE', '页面已切换，请手动核实关注结果。');
         const current = headerScope(target), status = current && relationship(current);
-        if (status) return { status, clicked: true };
+        if (!status && confirmed) throw new C.ReplyError('FOLLOWBACK_BLOCKED', 'X 的关注状态已回退，已暂停，请核实。');
+        if (status !== confirmed) { confirmed = status || ''; stableAt = Date.now(); }
+        if (status && Date.now() - stableAt >= 1500) return { status, clicked: true };
       }
     } catch (error) { error.clicked = true; throw error; }
     return { status: 'uncertain', clicked: true };

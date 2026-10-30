@@ -51,7 +51,14 @@ function harness(options = {}) {
 }
 const request = (requestId = 'request_1', force = false) => ({ type: 'GENERATE', requestId, force, source: { url: 'https://x.com/alice/status/123', text: 'UNIQUE_SOURCE_123 小团队先明确验收标准再使用 AI。' } });
 test('X content scripts cannot ask the background to confirm follows or change follow-back lists', async()=>{
-  const h=harness();for(const type of ['FOLLOWBACK_STATUS','FOLLOWBACK_CHECK','FOLLOWBACK_CONFIRM','FOLLOWBACK_IGNORE','FOLLOWBACK_IDENTIFY','PRIORITY_STATUS','CLEAR_PRIORITY_CACHE','AUTOFOLLOW_STATUS','AUTOFOLLOW_PAUSE','AUTOFOLLOW_RESUME','AUTOFOLLOW_IGNORE'])assert.equal((await h.send({type,account:'victim'})).error.code,'DENIED');
+  const h=harness();for(const type of ['FOLLOWBACK_STATUS','FOLLOWBACK_CHECK','FOLLOWBACK_CONFIRM','FOLLOWBACK_IGNORE','FOLLOWBACK_IDENTIFY','IDENTIFY_X_ACCOUNT','PRIORITY_STATUS','CLEAR_PRIORITY_CACHE','AUTOFOLLOW_STATUS','AUTOFOLLOW_PAUSE','AUTOFOLLOW_RESUME','AUTOFOLLOW_IGNORE'])assert.equal((await h.send({type,account:'victim'})).error.code,'DENIED');
+});
+test('content pages can read only the configured follow progress and cannot forge a success event', async()=>{
+  const h=harness();h.stores.local.settings={xAccount:'writer'};
+  assert.equal((await h.send({type:'GET_FOLLOW_ACTIVITY',account:'someoneelse'})).error.code,'DENIED');
+  assert.equal((await h.send({type:'GET_FOLLOW_ACTIVITY',account:'writer'})).data.total,0);
+  assert.equal((await h.send({type:'RECORD_FOLLOW_ACTIVITY',event:{id:'forged',account:'writer',target:'victim',source:'auto',status:'followed',at:Date.now()}})).ok,false);
+  assert.equal((await h.send({type:'GET_FOLLOW_ACTIVITY',account:'writer'})).data.total,0);
 });
 test('real worker dispatch generates four replies via fixed local identity and caches no source body', async () => {
   const h = harness();

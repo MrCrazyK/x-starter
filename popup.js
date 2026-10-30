@@ -78,8 +78,8 @@ $('settings-form').addEventListener('submit', async event => {
       profileHighlightEnabled: $('profile-highlight').checked, profileGapThreshold: $('profile-gap-threshold').value,
       profilePriorityEnabled: $('profile-priority').checked,
       timelinePriorityEnabled: $('timeline-priority').checked,
-      followbackEnabled: $('followback-enabled').checked, followbackAccount: $('followback-account').value,
-      autoFollowEnabled: $('autofollow-enabled').checked, autoFollowAccount: $('autofollow-account').value,
+      xAccount: $('x-account').value, followbackEnabled: $('followback-enabled').checked,
+      autoFollowEnabled: $('autofollow-enabled').checked,
       autoFollowInterval: $('autofollow-interval').value, autoFollowPerRound: $('autofollow-round').value, autoFollowDaily: $('autofollow-daily').value,
       ...(fullSettings ? {
         collectWritingSamples: $('collect-writing').checked, useVoiceMemory: $('use-voice-memory').checked,
@@ -88,6 +88,7 @@ $('settings-form').addEventListener('submit', async event => {
       } : {})
     } });
     feedback('已保存，当前 X 页面会立即使用新设置。');
+    $('account-status').textContent = current.xAccount ? `@${current.xAccount} 已统一配置。` : '尚未绑定关注账号。';
     await refreshFollowback();
     await refreshPriority();
     await refreshAutoFollow();
@@ -127,8 +128,11 @@ $('open-panel').addEventListener('click', async () => {
     $('profile-highlight').checked = current.profileHighlightEnabled; $('profile-gap-threshold').value = current.profileGapThreshold; updateProfileNotice();
     $('profile-priority').checked = current.profilePriorityEnabled;
     $('timeline-priority').checked = current.timelinePriorityEnabled;
-    $('followback-enabled').checked = current.followbackEnabled; $('followback-account').value = current.followbackAccount;
-    $('autofollow-enabled').checked = current.autoFollowEnabled; $('autofollow-account').value = current.autoFollowAccount;
+    if (typeof current.xAccount !== 'string') throw new Error('请重新加载扩展，并刷新设置页面以使用统一账号配置。');
+    $('x-account').value = current.xAccount;
+    $('account-status').textContent = current.accountConflict?.length ? `旧版绑定了不同账号（${current.accountConflict.map(name => '@' + name).join('、')}），关注任务已暂停。请在此确定一个账号并保存。` : current.xAccount ? `@${current.xAccount} 已统一配置。` : '填写一次即可供两个关注功能共用。';
+    $('followback-enabled').checked = current.followbackEnabled;
+    $('autofollow-enabled').checked = current.autoFollowEnabled;
     $('autofollow-interval').value = current.autoFollowInterval; $('autofollow-round').value = current.autoFollowPerRound; $('autofollow-daily').value = current.autoFollowDaily;
     await refreshFollowback();
     await refreshPriority();
@@ -207,15 +211,16 @@ async function autoFollowAction(message) {
 $('autofollow-pause').addEventListener('click', () => void autoFollowAction({ type: 'AUTOFOLLOW_PAUSE' }));
 $('autofollow-resume').addEventListener('click', () => void autoFollowAction({ type: 'AUTOFOLLOW_RESUME' }));
 $('autofollow-refresh').addEventListener('click', () => void refreshAutoFollow());
-$('autofollow-identify').addEventListener('click', async () => {
-  try { const result = await send({ type: 'FOLLOWBACK_IDENTIFY' }); $('autofollow-account').value = result.account; $('autofollow-status').textContent = `已识别 @${result.account}，保存后绑定此账号。`; }
-  catch (error) { $('autofollow-status').textContent = error.message; }
+$('x-identify').addEventListener('click', async () => {
+  $('x-identify').disabled = true;
+  try { const result = await send({ type: 'IDENTIFY_X_ACCOUNT' }); $('x-account').value = result.account; $('account-status').textContent = `已识别 @${result.account}，保存后两个关注功能共用这个账号。`; }
+  catch (error) { $('account-status').textContent = error.message; }
+  finally { $('x-identify').disabled = false; }
 });
 
 function updateFollowbackButtons() {
   const value = followbackState, busy = followbackBusy || value?.busy;
   $('followback-check').disabled = busy || !value?.enabled;
-  $('followback-identify').disabled = busy;
   for (const button of $('followback-list').querySelectorAll('.followback-confirm')) {
     const seconds = Math.max(0, Math.ceil(((value?.nextAllowedAt || 0) - Date.now()) / 1000));
     button.disabled = busy || !value?.enabled || value.paused || value.automaticLocked || button.dataset.status !== 'pending' || value.confirmed >= 5 || seconds > 0;
@@ -261,10 +266,6 @@ async function followbackAction(message) {
 }
 $('followback-check').addEventListener('click', () => void followbackAction({ type: 'FOLLOWBACK_CHECK' }));
 $('followback-refresh').addEventListener('click', () => void refreshFollowback());
-$('followback-identify').addEventListener('click', async () => {
-  try { const result = await send({ type: 'FOLLOWBACK_IDENTIFY' }); $('followback-account').value = result.account; $('followback-status').textContent = `已识别 @${result.account}，保存后绑定此账号。`; }
-  catch (error) { $('followback-status').textContent = error.message; }
-});
 const followbackPoll = setInterval(() => { if (!document.hidden && !followbackBusy) { void refreshFollowback(); void refreshPriority(); void refreshAutoFollow(); } }, 5000);
 const followbackCountdown = setInterval(updateFollowbackButtons, 1000);
 window.addEventListener('pagehide', () => { clearInterval(followbackPoll); clearInterval(followbackCountdown); });
