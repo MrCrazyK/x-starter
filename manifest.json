@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "X-starter",
   "short_name": "X-starter",
-  "version": "0.6.0",
-  "description": "帮助 X 新账户快速起号：结合上下文生成 4 条回复候选、学习手写语气、头像绿框与资料卡标记，并定期整理待确认的回关名单。通过本机 Magpie 调用模型。",
+  "version": "0.7.0",
+  "description": "帮助 X 新账户快速起号：上下文回复候选、手写语气记忆、头像与资料卡标记、回关名单，以及可选的定时自动关注。通过本机 Magpie 调用回复模型。",
   "minimum_chrome_version": "120",
   "options_ui": { "page": "popup.html?settings=1", "open_in_tab": true },
   "permissions": ["storage", "alarms"],
@@ -17,7 +17,7 @@
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "content_scripts": [{
     "matches": ["https://x.com/*", "https://www.x.com/*", "https://twitter.com/*", "https://www.twitter.com/*"],
-    "js": ["shared.js", "memory.js", "context.js", "learning.js", "profile.js", "priority.js", "priority-page.js", "priority-timeline.js", "editor.js", "followback.js", "followers.js", "content.js"],
+    "js": ["shared.js", "memory.js", "context.js", "learning.js", "profile.js", "priority.js", "priority-page.js", "priority-timeline.js", "editor.js", "followback.js", "followers.js", "autofollow.js", "autofollow-page.js", "content.js"],
     "run_at": "document_idle"
   }],
   "content_security_policy": {

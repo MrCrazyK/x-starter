@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 let current;
 let followbackState = null, followbackBusy = false, followbackRefreshing = false;
 let priorityRefreshing = false;
+let autoFollowState = null, autoFollowRefreshing = false, autoFollowBusy = false;
 const fullSettings = new URLSearchParams(location.search).has('settings');
 document.body.classList.toggle('full-settings', fullSettings);
 if (fullSettings) document.title = '提示词与上下文设置 · X-starter';
@@ -78,6 +79,8 @@ $('settings-form').addEventListener('submit', async event => {
       profilePriorityEnabled: $('profile-priority').checked,
       timelinePriorityEnabled: $('timeline-priority').checked,
       followbackEnabled: $('followback-enabled').checked, followbackAccount: $('followback-account').value,
+      autoFollowEnabled: $('autofollow-enabled').checked, autoFollowAccount: $('autofollow-account').value,
+      autoFollowInterval: $('autofollow-interval').value, autoFollowPerRound: $('autofollow-round').value, autoFollowDaily: $('autofollow-daily').value,
       ...(fullSettings ? {
         collectWritingSamples: $('collect-writing').checked, useVoiceMemory: $('use-voice-memory').checked,
         tone: $('tone').value, strictRules: $('strict-rules').value, maxChars: $('max-chars').value, bannedTerms: $('banned-terms').value,
@@ -87,6 +90,7 @@ $('settings-form').addEventListener('submit', async event => {
     feedback('已保存，当前 X 页面会立即使用新设置。');
     await refreshFollowback();
     await refreshPriority();
+    await refreshAutoFollow();
     await check();
   } catch (error) { feedback(error.message, true); }
   finally { $('save').disabled = false; }
@@ -113,7 +117,7 @@ $('open-panel').addEventListener('click', async () => {
 (async () => {
   try {
     current = await send({ type: 'GET_SETTINGS' });
-    if (!Array.isArray(current.candidatePreferences) || typeof current.conversational !== 'boolean' || typeof current.autoGenerateNoticeVersion !== 'number' || typeof current.collectWritingSamples !== 'boolean' || typeof current.profileHighlightEnabled !== 'boolean' || typeof current.timelinePriorityEnabled !== 'boolean') throw new Error('扩展后台仍在运行旧版。请在扩展管理页点击「重新加载」，再刷新 X 和设置页面。');
+    if (!Array.isArray(current.candidatePreferences) || typeof current.conversational !== 'boolean' || typeof current.autoGenerateNoticeVersion !== 'number' || typeof current.collectWritingSamples !== 'boolean' || typeof current.profileHighlightEnabled !== 'boolean' || typeof current.timelinePriorityEnabled !== 'boolean' || typeof current.autoFollowEnabled !== 'boolean') throw new Error('扩展后台仍在运行旧版。请在扩展管理页点击「重新加载」，再刷新 X 和设置页面。');
     $('port').value = current.port; $('language').value = current.language;
     $('length').value = current.length; $('auto-generate').checked = current.autoGenerate;
     updateAutoNotice();
@@ -124,8 +128,11 @@ $('open-panel').addEventListener('click', async () => {
     $('profile-priority').checked = current.profilePriorityEnabled;
     $('timeline-priority').checked = current.timelinePriorityEnabled;
     $('followback-enabled').checked = current.followbackEnabled; $('followback-account').value = current.followbackAccount;
+    $('autofollow-enabled').checked = current.autoFollowEnabled; $('autofollow-account').value = current.autoFollowAccount;
+    $('autofollow-interval').value = current.autoFollowInterval; $('autofollow-round').value = current.autoFollowPerRound; $('autofollow-daily').value = current.autoFollowDaily;
     await refreshFollowback();
     await refreshPriority();
+    await refreshAutoFollow();
     if (current.model) { $('model').add(new Option(current.model, current.model)); $('model').value = current.model; }
     $('save').disabled = false;
     await check();
@@ -149,13 +156,69 @@ $('clear-priority-cache').addEventListener('click', async () => {
   finally { $('clear-priority-cache').disabled = false; }
 });
 
+function updateAutoFollowButtons() {
+  const value = autoFollowState, busy = autoFollowBusy || value?.busy;
+  $('autofollow-pause').disabled = autoFollowBusy || !value?.enabled || value.paused;
+  $('autofollow-resume').disabled = busy || !value?.enabled || !value.paused;
+  $('autofollow-refresh').disabled = autoFollowBusy;
+  for (const button of $('autofollow-queue').querySelectorAll('button')) button.disabled = busy;
+}
+function renderAutoFollow(value) {
+  autoFollowState = value;
+  $('autofollow-status').textContent = value.notice || (value.enabled ? '已启用，等待整理候选。' : '尚未启用。勾选、绑定账号并保存后才执行自动关注。');
+  $('autofollow-status').classList.toggle('error', value.paused);
+  const next = value.enabled && value.nextAt && !value.paused ? new Date(value.nextAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '—';
+  $('autofollow-meta').textContent = `${value.account ? `@${value.account} · ` : ''}本轮 ${value.roundUsed}/${value.perRound} · 今日 ${value.dayUsed}/${value.daily} · 队列 ${value.queue.length}/20${value.busy ? ' · 正在处理' : ''}${value.paused ? ' · 已暂停' : ''} · 下次 ${next}（北京时间）`;
+  $('autofollow-queue-label').textContent = `候选队列 · ${value.queue.length}/20`;
+  $('autofollow-queue').replaceChildren();
+  for (const row of value.queue) {
+    const card = document.createElement('article'); card.className = 'autofollow-item';
+    const link = document.createElement('a'); link.href = `https://x.com/${row.account}`; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = `${row.name || row.account} · @${row.account}`;
+    const info = document.createElement('p'); info.textContent = row.source === 'followers' ? '优先 · 蓝 V 粉丝，执行前复查关系' : '搜索“蓝v互关” · 执行前核验关注数与粉丝数';
+    const ignore = document.createElement('button'); ignore.type = 'button'; ignore.className = 'text-button'; ignore.textContent = '移除并忽略';
+    ignore.addEventListener('click', () => void autoFollowAction({ type: 'AUTOFOLLOW_IGNORE', account: row.account }));
+    card.append(link, info, ignore); $('autofollow-queue').append(card);
+  }
+  $('autofollow-history').replaceChildren();
+  for (const row of value.history) {
+    const card = document.createElement('article'); card.className = 'autofollow-item';
+    const link = document.createElement('a'); link.href = `https://x.com/${row.account}`; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = `@${row.account}`;
+    const info = document.createElement('p'), state = { followed: '已关注', requested: '已发送申请', already: '已经关注或申请', skipped: '已跳过', uncertain: '结果待核实', interrupted: '中断，待核实' }[row.status] || '已处理';
+    info.textContent = `${new Date(row.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })} · ${state}${row.reason ? ` · ${row.reason}` : ''}`;
+    card.append(link, info); $('autofollow-history').append(card);
+  }
+  if (!value.history.length) { const empty = document.createElement('p'); empty.className = 'field-help'; empty.textContent = '还没有执行记录。'; $('autofollow-history').append(empty); }
+  updateAutoFollowButtons();
+}
+async function refreshAutoFollow() {
+  if (autoFollowRefreshing) return;
+  autoFollowRefreshing = true;
+  try { renderAutoFollow(await send({ type: 'AUTOFOLLOW_STATUS' })); }
+  catch (error) { $('autofollow-status').textContent = error.message; }
+  finally { autoFollowRefreshing = false; }
+}
+async function autoFollowAction(message) {
+  if (autoFollowBusy) return;
+  autoFollowBusy = true; updateAutoFollowButtons();
+  try { renderAutoFollow(await send(message)); }
+  catch (error) { $('autofollow-status').textContent = error.message; }
+  finally { autoFollowBusy = false; updateAutoFollowButtons(); }
+}
+$('autofollow-pause').addEventListener('click', () => void autoFollowAction({ type: 'AUTOFOLLOW_PAUSE' }));
+$('autofollow-resume').addEventListener('click', () => void autoFollowAction({ type: 'AUTOFOLLOW_RESUME' }));
+$('autofollow-refresh').addEventListener('click', () => void refreshAutoFollow());
+$('autofollow-identify').addEventListener('click', async () => {
+  try { const result = await send({ type: 'FOLLOWBACK_IDENTIFY' }); $('autofollow-account').value = result.account; $('autofollow-status').textContent = `已识别 @${result.account}，保存后绑定此账号。`; }
+  catch (error) { $('autofollow-status').textContent = error.message; }
+});
+
 function updateFollowbackButtons() {
   const value = followbackState, busy = followbackBusy || value?.busy;
   $('followback-check').disabled = busy || !value?.enabled;
   $('followback-identify').disabled = busy;
   for (const button of $('followback-list').querySelectorAll('.followback-confirm')) {
     const seconds = Math.max(0, Math.ceil(((value?.nextAllowedAt || 0) - Date.now()) / 1000));
-    button.disabled = busy || !value?.enabled || value.paused || button.dataset.status !== 'pending' || value.confirmed >= 5 || seconds > 0;
+    button.disabled = busy || !value?.enabled || value.paused || value.automaticLocked || button.dataset.status !== 'pending' || value.confirmed >= 5 || seconds > 0;
     button.textContent = button.dataset.status === 'pending' ? seconds > 0 ? `等待 ${seconds} 秒` : '确认回关' : ({ followed: '已回关', requested: '已发送请求', uncertain: '请手动核实', confirming: '正在确认' }[button.dataset.status] || '已处理');
   }
   for (const button of $('followback-list').querySelectorAll('.followback-ignore')) button.disabled = busy;
@@ -166,7 +229,7 @@ function renderFollowback(value) {
   $('followback-status').classList.toggle('error', value.paused);
   const last = value.checkedAt ? new Date(value.checkedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '尚未检查';
   const next = value.enabled && value.nextAt && !value.paused ? new Date(value.nextAt).toLocaleTimeString('zh-CN', { hour12: false }) : '—';
-  $('followback-meta').textContent = `${value.account ? `@${value.account} · ` : ''}上次 ${last} · 下次 ${next} · 本轮已确认 ${value.confirmed}/5${value.paused ? ' · 已暂停，处理后点立即检查继续' : ''}`;
+  $('followback-meta').textContent = `${value.account ? `@${value.account} · ` : ''}上次 ${last} · 下次 ${next} · 本轮已确认 ${value.confirmed}/5${value.paused ? ' · 已暂停，处理后点立即检查继续' : ''}${value.automaticLocked ? ' · 此账号已开启自动关注，手动回关暂不可用' : ''}`;
   $('followback-list').replaceChildren();
   for (const row of value.items) {
     const card = document.createElement('article'); card.className = 'followback-item'; card.dataset.account = row.account;
@@ -202,7 +265,7 @@ $('followback-identify').addEventListener('click', async () => {
   try { const result = await send({ type: 'FOLLOWBACK_IDENTIFY' }); $('followback-account').value = result.account; $('followback-status').textContent = `已识别 @${result.account}，保存后绑定此账号。`; }
   catch (error) { $('followback-status').textContent = error.message; }
 });
-const followbackPoll = setInterval(() => { if (!document.hidden && !followbackBusy) { void refreshFollowback(); void refreshPriority(); } }, 5000);
+const followbackPoll = setInterval(() => { if (!document.hidden && !followbackBusy) { void refreshFollowback(); void refreshPriority(); void refreshAutoFollow(); } }, 5000);
 const followbackCountdown = setInterval(updateFollowbackButtons, 1000);
 window.addEventListener('pagehide', () => { clearInterval(followbackPoll); clearInterval(followbackCountdown); });
 

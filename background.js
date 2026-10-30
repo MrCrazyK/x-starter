@@ -1,5 +1,5 @@
 /* All model requests originate here, never from x.com's origin. */
-importScripts('shared.js', 'memory.js', 'followback.js', 'followback-background.js', 'priority.js', 'priority-background.js');
+importScripts('shared.js', 'memory.js', 'followback.js', 'followback-background.js', 'priority.js', 'priority-background.js', 'autofollow.js', 'autofollow-background.js');
 const C = globalThis.MagpieReply;
 const M = globalThis.MagpieMemory;
 const APP_KEY = 'magpie-x-reply'; // Local application identity, not a vendor API secret.
@@ -12,6 +12,7 @@ let memoryQueue = Promise.resolve(), generatedQueue = Promise.resolve();
 async function getSettings() { return C.settings((await chrome.storage.local.get('settings')).settings); }
 const followback = chrome.alarms ? MagpieFollowbackBackground.create({ getSettings }) : null;
 const priorityProfiles = chrome.alarms ? MagpiePriorityBackground.create({ getSettings }) : null;
+const autoFollow = chrome.alarms ? MagpieAutoFollowBackground.create({ getSettings }) : null;
 async function hash(value) {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -231,6 +232,22 @@ async function dispatch(message, sender) {
   const type = senderType(sender);
   if (!type || !message || typeof message !== 'object') throw new C.ReplyError('DENIED', '此页面无权调用扩展。');
   switch (message.type) {
+    case 'AUTOFOLLOW_AUTHORIZE': {
+      if (type !== 'content' || !autoFollow) throw new C.ReplyError('DENIED', '此页面无权执行自动关注。');
+      return autoFollow.authorize(message, sender);
+    }
+    case 'AUTOFOLLOW_STATUS':
+    case 'AUTOFOLLOW_PAUSE':
+    case 'AUTOFOLLOW_RESUME':
+    case 'AUTOFOLLOW_IGNORE': {
+      if (type !== 'extension') throw new C.ReplyError('DENIED', '请在扩展设置中管理自动关注。');
+      if (!autoFollow) throw new C.ReplyError('AUTOFOLLOW_UNAVAILABLE', '请重新加载扩展。');
+      await autoFollow.ready;
+      if (message.type === 'AUTOFOLLOW_PAUSE') return autoFollow.pause();
+      if (message.type === 'AUTOFOLLOW_RESUME') return autoFollow.resume();
+      if (message.type === 'AUTOFOLLOW_IGNORE') return autoFollow.ignore(message.account);
+      return autoFollow.status();
+    }
     case 'PRIORITY_PROFILES':
     case 'OBSERVED_PRIORITY_PROFILE': {
       if (type !== 'content') throw new C.ReplyError('DENIED', '请从 X 页面读取头像资料。');
@@ -322,9 +339,15 @@ async function dispatch(message, sender) {
       if (type !== 'extension') throw new C.ReplyError('DENIED', '请通过扩展设置保存。');
       const normalized = C.settings(message.settings);
       const previous = await getSettings();
+      if (normalized.autoFollowEnabled && (!previous.autoFollowEnabled || normalized.autoFollowAccount !== previous.autoFollowAccount) && followback) {
+        await followback.ready;
+        const manual = await followback.status();
+        if (manual.busy && manual.account === normalized.autoFollowAccount) throw new C.ReplyError('AUTOFOLLOW_BUSY', '回关任务正在处理中，请等它结束后再启用自动关注。');
+      }
       await chrome.storage.local.set({ settings: normalized });
       if (followback) { await followback.ready; await followback.configure(previous, normalized); }
       if (priorityProfiles) { await priorityProfiles.ready; await priorityProfiles.configure(previous, normalized); }
+      if (autoFollow) { await autoFollow.ready; await autoFollow.configure(previous, normalized); }
       catalogCache.clear();
       for (const job of jobs.values()) job.controller.abort();
       for (const job of voiceJobs.values()) job.controller.abort();

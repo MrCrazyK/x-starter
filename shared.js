@@ -24,7 +24,8 @@
     contextEnabled: true, contextLimit: 12, conversational: true,
     collectWritingSamples: true, useVoiceMemory: true,
     profileHighlightEnabled: true, profileGapThreshold: 20, profilePriorityEnabled: true, timelinePriorityEnabled: false,
-    followbackEnabled: false, followbackAccount: ''
+    followbackEnabled: false, followbackAccount: '',
+    autoFollowEnabled: false, autoFollowAccount: '', autoFollowInterval: 30, autoFollowPerRound: 20, autoFollowDaily: 50
   });
   class ReplyError extends Error {
     constructor(code, message) { super(message); this.name = 'ReplyError'; this.code = code; }
@@ -59,6 +60,16 @@
     const bannedTerms = [...new Set(terms.map(t => t.trim()).filter(Boolean))];
     const followbackAccount = typeof input.followbackAccount === 'string' ? input.followbackAccount.trim().replace(/^@/u, '').toLowerCase() : '';
     if (followbackAccount && !/^[a-z0-9_]{1,15}$/u.test(followbackAccount) || input.followbackEnabled === true && !followbackAccount) throw new ReplyError('PREFERENCES', '请先填写或识别要整理回关名单的 X 用户名。');
+    const autoFollowAccount = typeof input.autoFollowAccount === 'string' ? input.autoFollowAccount.trim().replace(/^@/u, '').toLowerCase() : '';
+    if (autoFollowAccount && !/^[a-z0-9_]{1,15}$/u.test(autoFollowAccount) || input.autoFollowEnabled === true && !autoFollowAccount) throw new ReplyError('PREFERENCES', '请先填写或识别自动关注要使用的 X 用户名。');
+    const numberSetting = (key, min, max, label) => {
+      const raw = input[key] ?? DEFAULTS[key], value = Number(raw);
+      if (!['string', 'number'].includes(typeof raw) || typeof raw === 'string' && !raw.trim() || !Number.isSafeInteger(value) || value < min || value > max) throw new ReplyError('PREFERENCES', `${label}应为 ${min}–${max} 的整数。`);
+      return value;
+    };
+    const autoFollowInterval = numberSetting('autoFollowInterval', 5, 1440, '自动关注的轮次间隔（分钟）');
+    const autoFollowPerRound = numberSetting('autoFollowPerRound', 1, 100, '每轮关注上限');
+    const autoFollowDaily = numberSetting('autoFollowDaily', 1, 200, '每日关注上限');
     return {
       port, model,
       language: ['auto', 'zh', 'en'].includes(input.language) ? input.language : DEFAULTS.language,
@@ -75,7 +86,8 @@
       profileGapThreshold,
       profilePriorityEnabled: typeof input.profilePriorityEnabled === 'boolean' ? input.profilePriorityEnabled : true,
       timelinePriorityEnabled: input.timelinePriorityEnabled === true,
-      followbackEnabled: input.followbackEnabled === true, followbackAccount
+      followbackEnabled: input.followbackEnabled === true, followbackAccount,
+      autoFollowEnabled: input.autoFollowEnabled === true, autoFollowAccount, autoFollowInterval, autoFollowPerRound, autoFollowDaily
     };
   }
   function xURL(value) {

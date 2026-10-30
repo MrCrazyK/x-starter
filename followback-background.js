@@ -90,6 +90,7 @@
     }
     async function confirm(target) {
       const settings = await getSettings(), owner = settings.followbackAccount, name = F.account(target);
+      if (settings.autoFollowEnabled && settings.autoFollowAccount === owner) throw failure('FOLLOWBACK_BUSY', '这个账号已启用自动关注，请先关闭自动关注并保存，再手动确认回关。');
       await enabled(owner);
       await run(owner, async job => {
         await change(owner, value => {
@@ -125,7 +126,7 @@
     async function status() {
       const settings = await getSettings(), value = await read(settings.followbackAccount);
       const alarm = await chrome.alarms.get(ALARM);
-      return { ...value, enabled: settings.followbackEnabled, busy: Boolean(running), nextAt: alarm?.scheduledTime || 0, limit: F.LIMIT, gap: F.GAP };
+      return { ...value, enabled: settings.followbackEnabled, automaticLocked: settings.autoFollowEnabled === true && settings.autoFollowAccount === settings.followbackAccount, busy: Boolean(running), nextAt: alarm?.scheduledTime || 0, limit: F.LIMIT, gap: F.GAP };
     }
     async function ignore(target) {
       const settings = await getSettings(), name = F.account(target);
