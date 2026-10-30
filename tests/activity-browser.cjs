@@ -35,9 +35,13 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
       const options = await worker.evaluate(() => getSettings()); assert.equal(options.xAccount, 'writer'); assert.equal(options.autoFollowAccount, 'writer'); assert.equal(options.followbackAccount, 'writer');
       await page.bringToFront(); await count(0); assert.equal(await ring.getAttribute('aria-valuemax'), '400');
     });
-    await step('the dark launcher keeps its shape and click area while the ring stays outside it and above native buttons', async () => {
-      const box = await launcher.boundingBox(), native = await page.locator('[data-testid="GrokDrawerHeader"]').boundingBox(), outer = await ring.boundingBox();
-      assert.equal(Math.round(box.width), 55); assert.equal(Math.round(box.height), 55); assert.ok(outer.width > box.width && outer.height > box.height); assert.ok(outer.y + outer.height < native.y);
+    await step('the ring surrounds the star inside the dark button and preserves its click area and native-button spacing', async () => {
+      const box = await launcher.boundingBox(), native = await page.locator('[data-testid="GrokDrawerHeader"]').boundingBox(), inner = await ring.boundingBox(), star = await launcher.locator('svg:not(.xs-follow-ring)').boundingBox();
+      assert.equal(Math.round(box.width), 55); assert.equal(Math.round(box.height), 55);
+      assert.ok(inner.x > box.x && inner.y > box.y && inner.x + inner.width < box.x + box.width && inner.y + inner.height < box.y + box.height);
+      assert.ok(inner.x < star.x && inner.y < star.y && inner.x + inner.width > star.x + star.width && inner.y + inner.height > star.y + star.height);
+      assert.ok(Math.abs(inner.x + inner.width / 2 - box.x - box.width / 2) < .5 && Math.abs(inner.y + inner.height / 2 - box.y - box.height / 2) < .5);
+      assert.ok(box.y + box.height < native.y);
       assert.equal(await launcher.evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(32, 45, 50)');
       await launcher.click(); assert.equal(await page.locator('#magpie-x-reply-root').locator('#panel').isVisible(), true); await page.locator('#magpie-x-reply-root').locator('#close').click();
     });

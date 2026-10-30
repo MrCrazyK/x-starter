@@ -1,10 +1,10 @@
-/* Daily follow progress around the original dark launcher; no account actions. */
+/* Daily follow progress around the star, inside the dark launcher. */
 (() => {
   'use strict';
   const R = globalThis.MagpieActivity;
   function create({ launcher, send, getSettings, getAccount }) {
     const style = document.createElement('style');
-    style.textContent = `#launcher svg.xs-follow-ring{position:absolute;inset:-8px;display:block;width:calc(100% + 16px);height:calc(100% + 16px);overflow:visible;pointer-events:none;transform:rotate(-90deg)}.xs-follow-ring circle{fill:none;stroke-width:3px;vector-effect:non-scaling-stroke}.xs-follow-track{stroke:#52897945}.xs-follow-value{stroke:#79cbb4;stroke-linecap:round;transition:stroke-dashoffset .55s ease}.xs-follow-bump{position:absolute;left:50%;top:-19px;padding:2px 7px;border-radius:20px;background:#18392f;color:#c8ffe9;border:1px solid #75c7ab;font:700 14px/1.4 Inter,"Segoe UI",sans-serif;box-shadow:0 3px 12px #0003;white-space:nowrap;pointer-events:none;z-index:2;transform:translateX(-50%)}@media(prefers-reduced-motion:reduce){.xs-follow-value{transition:none}}`;
+    style.textContent = `#launcher svg.xs-follow-ring{position:absolute;left:50%;top:50%;display:block;width:clamp(30px,calc(var(--launcher-size,55px) - 16px),38px);height:clamp(30px,calc(var(--launcher-size,55px) - 16px),38px);overflow:visible;pointer-events:none;transform:translate(-50%,-50%) rotate(-90deg)}.xs-follow-ring circle{fill:none;stroke-width:2px;vector-effect:non-scaling-stroke}.xs-follow-track{stroke:#52897945}.xs-follow-value{stroke:#79cbb4;stroke-linecap:round;transition:stroke-dashoffset .55s ease}.xs-follow-bump{position:absolute;left:50%;top:-19px;padding:2px 7px;border-radius:20px;background:#18392f;color:#c8ffe9;border:1px solid #75c7ab;font:700 14px/1.4 Inter,"Segoe UI",sans-serif;box-shadow:0 3px 12px #0003;white-space:nowrap;pointer-events:none;z-index:2;transform:translateX(-50%)}@media(prefers-reduced-motion:reduce){.xs-follow-value{transition:none}}`;
     launcher.getRootNode().append(style);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.classList.add('xs-follow-ring');
     svg.setAttribute('role', 'progressbar'); svg.setAttribute('aria-label', '今日插件关注进度'); svg.setAttribute('aria-valuemin', '0'); svg.setAttribute('hidden', '');
