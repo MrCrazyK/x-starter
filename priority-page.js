@@ -22,7 +22,7 @@
     if (followingCount === null || followerCount === null) return null;
     // On profile pages X puts the owner's verified badge inside a button in UserName.
     const verified = [...header[0].querySelectorAll('[data-testid="icon-verified"],svg[aria-label="Verified account"],svg[aria-label="认证账号"],svg[aria-label="已认证账号"]')].some(visible);
-    return { account: name, following: followingCount, followers: followerCount, verified, status: 'ready' };
+    return { account: name, following: followingCount, followers: followerCount, verified, viewer: H.viewer(), relationship: H.relationship(main, name), status: 'ready' };
   }
   async function read(message) {
     const name = P.account(message.account), until = Date.now() + 9000;
@@ -30,7 +30,9 @@
       if (cancelled.has(message.token)) throw new C.ReplyError('PRIORITY_CANCELLED', '资料读取已取消。');
       if (blocked()) throw new C.ReplyError('PRIORITY_BLOCKED', 'X 需要登录、验证或显示访问限制，资料读取已暂停。');
       if (location.pathname.replace(/\/$/u, '').toLowerCase() !== `/${name}`) throw new C.ReplyError('PRIORITY_SOURCE', '资料页已变化，跳过这次读取。');
-      const value = snapshot(name); if (value) return value;
+      const value = snapshot(name);
+      if (value?.viewer && value.viewer !== message.viewer) throw new C.ReplyError('PRIORITY_SOURCE', '登录账号已变化，跳过本次关注状态读取。');
+      if (value?.viewer && value.relationship !== 'unknown') return value;
       await pause(250);
     }
     throw new C.ReplyError('PRIORITY_SOURCE', '资料数量未加载，暂不标记。');

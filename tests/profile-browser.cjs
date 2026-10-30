@@ -9,6 +9,8 @@ function fixture() { return `<!doctype html><html lang="zh-CN"><meta charset="ut
 window.fixtureOptions={following:'2,000',followers:'4,000',account:'mustard',kind:'explicit',dark:false,route:'followers'};window.fixtureClicks=0;let closeTimer;
 const escapeText=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function render(card){const o=window.fixtureOptions;card.className='card'+(o.dark?' dark':'');card.innerHTML='<div class="top"><a href="/'+o.account+'"><div class="avatar" data-testid="UserAvatar-Container-'+o.account+'">测</div></a><button id="card-follow">Follow</button></div><a href="/'+o.account+'"><h2>测试账号 <svg class="verified" data-testid="icon-verified" aria-label="Verified account" style="display:'+(o.verified===false?'none':'inline-block')+'" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="M5 10l3 3 7-7" stroke="white" fill="none" stroke-width="2"/></svg></h2><span class="handle">@'+o.account+'</span></a><div class="body"><p class="bio">用这张模拟卡验证颜色和数量判断。<br>关注与粉丝数字只在本地计算。</p><div class="stats"><a id="following-count" href="/'+o.account+'/following"><span class="amount">'+escapeText(o.following)+'</span><span class="label">'+(o.zh?'关注':'Following')+'</span></a><a id="followers-count" href="/'+(o.followerOwner||o.account)+'/'+o.route+'"><span class="amount">'+escapeText(o.followers)+'</span><span class="label">'+(o.zh?'粉丝':'Followers')+'</span></a></div><p class="mutual">测试内容 · 不调用模型</p><button class="summary">Profile Summary</button></div>';if(o.followingTitle)card.querySelector('#following-count').title=o.followingTitle;if(o.followersTitle)card.querySelector('#followers-count').title=o.followersTitle;card.querySelector('#card-follow').onclick=()=>window.fixtureClicks++;}
+window.fixtureRelation=value=>{const button=document.getElementById('card-follow');button.disabled=value==='unknown';button.dataset.testid=window.fixtureOptions.account+(value==='following'?'-unfollow':value==='requested'?'-pending':'-follow');button.textContent=value==='following'?'Following':value==='requested'?'Requested':value==='unknown'?'Loading':'Follow'};
+const viewer=document.createElement('a');viewer.dataset.testid='AppTabBar_Profile_Link';viewer.href='/writer';viewer.textContent='@writer';document.querySelector('main').prepend(viewer);
 window.fixtureClose=()=>{clearTimeout(closeTimer);document.getElementById('profile-test-card')?.remove()};
 window.fixtureUpdate=data=>{Object.assign(window.fixtureOptions,data);const card=document.getElementById('profile-test-card');if(card)render(card)};
 function open(){window.fixtureClose();const card=document.createElement('div');card.id='profile-test-card';if(window.fixtureOptions.kind!=='generic')card.dataset.testid=window.fixtureOptions.kind==='outside'?'UserHoverCard':'HoverCard';render(card);(window.fixtureOptions.kind==='outside'?document.body:document.getElementById('layers')).append(card);card.addEventListener('mouseenter',()=>clearTimeout(closeTimer));card.addEventListener('mouseleave',()=>{closeTimer=setTimeout(window.fixtureClose,120)})}
@@ -43,6 +45,7 @@ async function step(name, fn) { const started = Date.now(); await fn(); evidence
       await page.locator('#trigger').hover(); await card.waitFor();
     };
     const update = data => page.evaluate(data => window.fixtureUpdate(data), data);
+    const relation = value => page.evaluate(value => window.fixtureRelation(value), value);
     const save = async () => { await popup.locator('#save').click(); await popup.locator('#feedback').filter({ hasText: '已保存' }).waitFor(); };
     await step('hovering highlights the complete qualifying card while the ordinary page stays unchanged', async () => {
       assert.equal(await popup.locator('#profile-highlight').isChecked(), true); assert.equal(await popup.locator('#profile-gap-threshold').inputValue(), '20');
@@ -144,6 +147,32 @@ async function step(name, fn) { const started = Date.now(); await fn(); evidence
       await popup.setViewportSize({ width: 400, height: 1050 }); await popup.locator('.profile-options').screenshot({ path: path.join(root, '.test-output/v0.5.0-阈值设置.png') });
       assert.equal(evidence.chats, 0);
       assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('voiceMemory')).voiceMemory), undefined);
+    });
+    await step('both yellow and green cards clear immediately for following, pending and unknown relationships', async () => {
+      for (const counts of [{ following: '2,000', followers: '4,000' }, { following: '4,860', followers: '4,742' }]) {
+        await open(counts); await waitPaint(true);
+        await relation('following'); await waitPaint(false);
+        await relation('requested'); await waitPaint(false);
+        await relation('unknown'); await waitPaint(false);
+        await relation('not-following'); await waitPaint(true);
+      }
+    });
+    await step('follows-you indicators and another users follow button cannot replace the owners relationship', async () => {
+      await open(); await relation('following'); await waitPaint(false);
+      await page.evaluate(() => { const extra=document.createElement('div');extra.dataset.testid='UserCell';extra.innerHTML='<a href="/other">Other</a><button data-testid="other-follow">Follow</button>';document.getElementById('profile-test-card').append(extra); });
+      await page.waitForTimeout(180); assert.equal(await card.getAttribute('data-magpie-profile-highlight'), null);
+      await relation('not-following'); await waitPaint(true);
+      await page.evaluate(() => { const indicator=document.createElement('span');indicator.dataset.testid='userFollowIndicator';indicator.textContent='Follows you';document.getElementById('profile-test-card').append(indicator); }); await waitPaint(true);
+    });
+    await step('a plugin-confirmed follow removes a stale Follow card, and a later native unfollow can restore its marker', async () => {
+      await open(); await waitPaint(true);
+      await worker.evaluate(() => recordFollow({ id: 'profile:confirmed', account: 'writer', target: 'mustard', source: 'auto', status: 'followed', at: Date.now() }));
+      await waitPaint(false); assert.equal(await page.locator('#card-follow').innerText(), 'Follow');
+      await relation('following'); await page.waitForTimeout(180); await relation('not-following'); await waitPaint(true);
+    });
+    await step('a hover card nested inside a post still uses its own Follow button and clears when already followed', async () => {
+      await open(); await page.evaluate(()=>{const card=document.getElementById('profile-test-card'),article=document.createElement('article');card.parentNode.insertBefore(article,card);article.append(card)});
+      await waitPaint(true); await relation('following'); await waitPaint(false);
     });
     assert.deepEqual(evidence.pageErrors, []); console.log(`Profile browser checks passed: ${evidence.checks.length}; page errors: ${evidence.pageErrors.length}; model calls: ${evidence.chats}`);
   } finally {

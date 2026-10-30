@@ -50,7 +50,7 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
     await step('enabling the feature reads a visible certified author without any hover and marks both appearances', async () => {
       await popup.locator('#timeline-priority').check(); await save();
       await worker.evaluate(async () => {
-        for (const [account, following, followers] of [['beta', 1500, 500], ['equal', 800, 800], ['plain', 1200, 800], ['quoted', 1200, 800], ['late', 1200, 800]]) await priorityProfiles.observe({ account, following, followers, verified: true });
+        for (const [account, following, followers] of [['beta', 1500, 500], ['equal', 800, 800], ['plain', 1200, 800], ['quoted', 1200, 800], ['late', 1200, 800]]) await priorityProfiles.observe({ account, following, followers, verified: true, viewer: 'writer', relationship: 'not-following' });
       });
       await page.bringToFront(); await waitMark('alpha-avatar', true); await waitMark('alpha-second', true);
       assert.deepEqual(evidence.views, ['alpha']); assert.equal(await page.evaluate(() => window.hoverEvents), 0);
@@ -96,6 +96,33 @@ async function step(name, action) { await action(); evidence.checks.push({ name,
       for (let i = 0; i < 100; i++) { result = await worker.evaluate(async () => (await chrome.storage.local.get('priorityProfileCache')).priorityProfileCache?.records.find(row => row.account === 'manual')); if (result) break; await profile.waitForTimeout(100); }
       assert.equal(result?.verified, true); assert.equal(result?.following, 1200); assert.equal(result?.followers, 800);
       assert.equal(await profile.evaluate(() => window.followClicks), 0); await profile.close();
+    });
+    await step('already-followed and pending-request authors never keep an avatar frame even with qualifying counts', async () => {
+      for (const relationship of ['following', 'requested']) {
+        await worker.evaluate(relationship => priorityProfiles.observe({ account:'alpha',following:1200,followers:800,verified:true,viewer:'writer',relationship }), relationship);
+        await waitMark('alpha-avatar', false); await waitMark('alpha-second', false);
+      }
+      await worker.evaluate(() => priorityProfiles.observe({account:'alpha',following:1200,followers:800,verified:true,viewer:'writer',relationship:'not-following'})); await waitMark('alpha-avatar', true);
+    });
+    await step('unknown follow relationships hide frames until an explicit unfollowed state is observed', async () => {
+      await worker.evaluate(() => priorityProfiles.observe({account:'alpha',following:1200,followers:800,verified:true,viewer:'writer',relationship:'unknown'})); await waitMark('alpha-avatar', false);
+      await worker.evaluate(() => priorityProfiles.observe({account:'alpha',following:1200,followers:800,verified:true,viewer:'writer',relationship:'not-following'})); await waitMark('alpha-avatar', true);
+    });
+    await step('switching viewers cannot reuse the previous viewers unfollowed cache', async () => {
+      await worker.evaluate(async () => { for(const account of ['alpha','beta','equal','plain','quoted','late']) await priorityProfiles.observe({account,following:1200,followers:800,verified:true,viewer:'another',relationship:'following'}); });
+      await page.evaluate(() => { document.querySelector('[data-testid="AppTabBar_Profile_Link"]').href='/another'; }); await waitMark('alpha-avatar', false); await waitMark('alpha-second', false);
+      await page.evaluate(() => { document.querySelector('[data-testid="AppTabBar_Profile_Link"]').href='/writer'; }); await waitMark('alpha-avatar', true); assert.deepEqual(evidence.views, ['alpha','manual']);
+    });
+    await step('a native inline Following button clears every appearance of the same author', async () => {
+      await page.evaluate(()=>{const button=document.createElement('button');button.id='inline-follow-state';button.dataset.testid='alpha-unfollow';button.textContent='Following';document.querySelector('#post-alpha-avatar [data-testid="User-Name"]').append(button)});
+      await waitMark('alpha-avatar',false);await waitMark('alpha-second',false);
+      await page.evaluate(()=>document.getElementById('inline-follow-state').remove());
+      await worker.evaluate(()=>priorityProfiles.observe({account:'alpha',following:1200,followers:800,verified:true,viewer:'writer',relationship:'not-following'}));await waitMark('alpha-avatar',true);
+    });
+    await step('a confirmed plugin follow clears every appearance immediately and stays clear after a reload', async () => {
+      await worker.evaluate(() => recordFollow({id:'priority:confirmed',account:'writer',target:'alpha',source:'auto',status:'followed',at:Date.now()}));
+      await waitMark('alpha-avatar', false); await waitMark('alpha-second', false); await page.reload(); await page.waitForTimeout(500);
+      assert.equal(await marked('alpha-avatar'),null); assert.equal(await marked('alpha-second'),null); assert.deepEqual(evidence.views,['alpha','manual']);
     });
     await step('disabling clears existing frames and clearing the cache does not start reads while disabled', async () => {
       await popup.bringToFront(); await popup.locator('#timeline-priority').uncheck(); await save(); await waitMark('alpha-avatar', false);

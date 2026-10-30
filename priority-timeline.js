@@ -17,12 +17,12 @@
       const name = header && [...header.querySelectorAll('a[href]')].map(linkAccount).find(Boolean);
       if (!name || name === owner) continue;
       const avatar = [...article.querySelectorAll(AVATAR)].find(node => node.closest(ARTICLE) === article && P.account(node.getAttribute('data-testid').slice('UserAvatar-Container-'.length)) === name);
-      if (avatar && visible(avatar)) result.push({ account: name, avatar, verified: H.isVerified(header, name) });
+      if (avatar && visible(avatar)) result.push({ account: name, avatar, verified: H.isVerified(header, name), relationship: H.relationship(header, name) });
     }
     return result;
   }
   function create({ send }) {
-    let options = null, stopped = true, timer = null, poll = null, busy = false, generation = 0, lastSent = '', lastAt = 0, hiddenSent = false;
+    let options = null, stopped = true, timer = null, poll = null, busy = false, generation = 0, lastSent = '', lastAt = 0, hiddenSent = false, viewer = '';
     const cache = new Map(), painted = new Map(), observed = new Map();
     const style = document.createElement('style'); style.id = 'xstarter-priority-style';
     style.textContent = '[data-xstarter-priority-avatar]{outline:3px solid #08ad61!important;outline-offset:3px!important;border-radius:var(--xstarter-priority-radius,50%)!important;box-shadow:0 0 0 6px #08ad6128!important}';
@@ -33,7 +33,7 @@
       node.removeAttribute('data-xstarter-priority-avatar'); node.style.removeProperty('--xstarter-priority-radius'); painted.delete(node);
     }
     function paint(rows) {
-      const wanted = new Map(rows.filter(row => row.verified && P.fresh(cache.get(row.account)) && P.qualifies(cache.get(row.account))).map(row => [row.avatar, row]));
+      const wanted = new Map(rows.filter(row => row.verified && !['following', 'requested'].includes(row.relationship) && P.recommend(cache.get(row.account), viewer)).map(row => [row.avatar, row]));
       for (const node of painted.keys()) if (!wanted.has(node) || painted.get(node).account !== wanted.get(node).account) restore(node);
       for (const [node, row] of wanted) {
         const data = cache.get(row.account);
@@ -49,16 +49,31 @@
     }
     function accept(value) {
       const row = P.record(value);
-      if (row && P.fresh(row)) { cache.set(row.account, row); while (cache.size > P.MAX) cache.delete(cache.keys().next().value); }
+      if (row?.viewer === viewer && P.fresh(row) && !(cache.get(row.account)?.checkedAt > row.checkedAt)) { cache.set(row.account, row); while (cache.size > P.MAX) cache.delete(cache.keys().next().value); }
+    }
+    function syncViewer() {
+      const next = H.viewer();
+      if (next !== viewer) {
+        viewer = next; generation++; cache.clear(); observed.clear(); lastSent = ''; lastAt = 0;
+        for (const node of painted.keys()) restore(node);
+      }
+      return viewer;
     }
     async function scan() {
       if (stopped || !options?.timelinePriorityEnabled) return;
+      syncViewer();
       if (document.visibilityState !== 'visible') {
-        if (!hiddenSent) { hiddenSent = true; void send({ type: 'PRIORITY_PROFILES', accounts: [], candidates: [], visible: false }).catch(() => {}); }
+        if (!hiddenSent) { hiddenSent = true; void send({ type: 'PRIORITY_PROFILES', viewer, accounts: [], candidates: [], visible: false }).catch(() => {}); }
         return;
       }
       hiddenSent = false;
-      const rows = authors(); paint(rows);
+      const rows = viewer ? authors() : [];
+      for (const row of rows.filter(row => ['following', 'requested'].includes(row.relationship))) {
+        if (cache.get(row.account)?.relationship === row.relationship) continue;
+        const profile = { ...(cache.get(row.account) || { status: 'unavailable' }), account: row.account, viewer, relationship: row.relationship, checkedAt: Date.now() };
+        accept(profile); void send({ type: 'OBSERVED_PRIORITY_PROFILE', profile }).catch(() => {});
+      }
+      paint(rows);
       const name = P.account(location.pathname.replaceAll('/', ''));
       const profile = name && globalThis.MagpiePriorityPage.snapshot(name);
       if (profile) {
@@ -70,10 +85,10 @@
         }
       }
       const accounts = P.accounts(rows.map(row => row.account)), candidates = P.accounts(rows.filter(row => row.verified).map(row => row.account));
-      const key = accounts.join(',') + '/' + candidates.join(',');
+      const key = viewer + '/' + accounts.join(',') + '/' + candidates.join(',');
       if (busy || Date.now() - lastAt < 750 || key === lastSent && Date.now() - lastAt < 10000) return;
       busy = true; lastSent = key; lastAt = Date.now(); const current = generation;
-      try { const result = await send({ type: 'PRIORITY_PROFILES', accounts, candidates, visible: true }); if (current === generation && !stopped) { for (const row of result.profiles || []) accept(row); paint(authors()); } }
+      try { const result = await send({ type: 'PRIORITY_PROFILES', viewer, accounts, candidates, visible: true }); if (current === generation && !stopped) { for (const row of result.profiles || []) accept(row); paint(authors()); } }
       catch {} finally { busy = false; }
     }
     function schedule() { if (!stopped && !timer) timer = setTimeout(() => { timer = null; void scan(); }, 180); }
@@ -91,8 +106,14 @@
     window.addEventListener('scroll', schedule, { passive: true }); window.addEventListener('resize', schedule); document.addEventListener('visibilitychange', () => void scan());
     chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (sender.id !== chrome.runtime.id) return;
-      if (message?.type === 'PRIORITY_IS_VISIBLE') { respond({ ok: true, data: { visible: !stopped && options?.timelinePriorityEnabled === true && document.visibilityState === 'visible' && authors().some(row => row.verified && row.account === message.account) } }); return; }
+      syncViewer();
+      if (message?.type === 'PRIORITY_IS_VISIBLE') { respond({ ok: true, data: { visible: !stopped && options?.timelinePriorityEnabled === true && viewer === message.viewer && document.visibilityState === 'visible' && authors().some(row => row.verified && row.account === message.account) } }); return; }
       if (message?.type === 'PRIORITY_PROFILE_UPDATED') { accept(message.profile); schedule(); }
+      if (message?.type === 'FOLLOW_ACTIVITY_UPDATED' && message.event?.account === viewer) {
+        const event = message.event;
+        accept({ ...(cache.get(event.target) || { status: 'unavailable' }), account: event.target, viewer, relationship: event.status === 'requested' ? 'requested' : 'following', checkedAt: event.at });
+        paint(authors());
+      }
       if (message?.type === 'PRIORITY_CACHE_CLEARED') { cache.clear(); observed.clear(); lastAt = 0; lastSent = ''; schedule(); }
     });
     return { configure, stop, scan };

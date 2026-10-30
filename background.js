@@ -11,7 +11,9 @@ let memoryQueue = Promise.resolve(), generatedQueue = Promise.resolve();
 
 async function getSettings() { return C.settings((await chrome.storage.local.get('settings')).settings); }
 const followActivity = MagpieActivityBackground.create({ getSettings });
-const recordFollow = event => followActivity.record(event);
+const recordFollow = async event => {
+  await Promise.allSettled([followActivity.record(event), priorityProfiles?.followed(event)]);
+};
 const followback = chrome.alarms ? MagpieFollowbackBackground.create({ getSettings, onFollow: recordFollow }) : null;
 const priorityProfiles = chrome.alarms ? MagpiePriorityBackground.create({ getSettings }) : null;
 const autoFollow = chrome.alarms ? MagpieAutoFollowBackground.create({ getSettings, onFollow: recordFollow }) : null;

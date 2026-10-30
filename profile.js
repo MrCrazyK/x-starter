@@ -34,6 +34,26 @@
       try { const url = new URL(link.href, location.href); return globalThis.MagpieReply.xURL(url.href) && url.pathname.replace(/\/$/u, '').toLowerCase() === `/${account}`; } catch { return false; }
     });
   }
+  function viewer() {
+    const names = new Set([...document.querySelectorAll('[data-testid="AppTabBar_Profile_Link"]')].filter(visible).map(link => {
+      const url = globalThis.MagpieReply.xURL(link.href), match = url?.pathname.match(/^\/([a-zA-Z0-9_]{1,15})\/?$/u); return match?.[1].toLowerCase() || '';
+    }).filter(Boolean));
+    return names.size === 1 ? [...names][0] : '';
+  }
+  function relationship(scope, name = '') {
+    const states = new Set();
+    for (const button of scope.querySelectorAll('button,[role="button"]')) {
+      const nested = button.closest('article,[data-testid="UserCell"],aside');
+      if (!visible(button) || nested && scope.contains(nested) || button.closest('[aria-hidden="true"],[inert]')) continue;
+      const id = button.getAttribute('data-testid') || '', label = (button.getAttribute('aria-label') || '').trim(), text = button.innerText.trim();
+      const target = label.match(/^(?:follow|unfollow) @([a-zA-Z0-9_]{1,15})$/iu)?.[1].toLowerCase();
+      if (target && name && target !== name) continue;
+      if (id.endsWith('-unfollow') || /^(?:Following|Unfollow|正在关注|已关注|取消关注|跟隨中|跟随中|取消關注)$/iu.test(text) || /^unfollow @/iu.test(label)) states.add('following');
+      else if (/-(?:cancel|pending)$/u.test(id) || /^(?:Requested|Pending|已请求|已申请|待批准|已申請|取消请求|取消申請)$/iu.test(text)) states.add('requested');
+      else if (!button.disabled && button.getAttribute('aria-disabled') !== 'true' && (id.endsWith('-follow') || /^(?:Follow|Follow back|关注|回关|關注|回關|跟隨)$/iu.test(text) || /^follow @/iu.test(label))) states.add('not-following');
+    }
+    return states.size === 1 ? [...states][0] : 'unknown';
+  }
   function countLink(link) {
     try {
       const url = new URL(link.href, location.href);
@@ -82,7 +102,7 @@
   }
   function create({ onRead } = {}) {
     let options = null, portal = null, timer = null, stopped = false;
-    const painted = new Map(), observed = new Map();
+    const painted = new Map(), observed = new Map(), confirmed = new Map(), previous = new WeakMap();
     const style = document.createElement('style'); style.id = 'magpie-profile-style';
     style.textContent = `[data-magpie-profile-highlight="true"],[data-magpie-profile-surface="true"]{background-color:var(--magpie-profile-color,${COLOR})!important}[data-magpie-profile-text="true"]{color:#172018!important}`;
     document.documentElement.append(style);
@@ -120,7 +140,7 @@
       const nextPortal = document.getElementById('layers');
       if (nextPortal !== portal) {
         observer.disconnect(); portal = nextPortal;
-        if (portal) observer.observe(portal, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'title', 'aria-label', 'data-testid', 'class'] });
+        if (portal) observer.observe(portal, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'title', 'aria-label', 'data-testid', 'class', 'disabled', 'aria-disabled'] });
       }
       const matches = new Map();
       if (options?.profileHighlightEnabled || options?.profilePriorityEnabled || options?.timelinePriorityEnabled) for (const scope of document.querySelectorAll(SCOPES)) {
@@ -131,11 +151,15 @@
             const card = findCard(row.link, other.link, scope, row.info.account);
             if (!card) continue;
             const verified = isVerified(card, row.info.account);
+            const owner = viewer(), name = row.info.account, key = `${owner}/${name}`, raw = relationship(card, name), old = previous.get(card);
+            if (raw === 'not-following' && old?.key === key && ['following', 'requested'].includes(old.relationship)) confirmed.delete(key);
+            previous.set(card, { key, relationship: raw });
+            const hint = confirmed.get(key), state = hint && Date.now() - hint.time < 300000 ? hint.relationship : raw;
             if (options.timelinePriorityEnabled && following !== null && followers !== null) {
-              const value = { account: row.info.account, following, followers, verified }, key = JSON.stringify(value);
-              if (observed.get(value.account) !== key) { observed.set(value.account, key); if (observed.size > 500) observed.delete(observed.keys().next().value); onRead?.(value); }
+              const value = { account: name, following, followers, verified, viewer: owner, relationship: state }, signature = JSON.stringify(value);
+              if (owner && observed.get(key) !== signature) { observed.set(key, signature); if (observed.size > 500) observed.delete(observed.keys().next().value); onRead?.(value); }
             }
-            const tone = options.profilePriorityEnabled && priority(following, followers, verified) ? 'green' : options.profileHighlightEnabled && qualifies(following, followers, options.profileGapThreshold) ? 'yellow' : '';
+            const tone = state !== 'not-following' || owner === name ? '' : options.profilePriorityEnabled && priority(following, followers, verified) ? 'green' : options.profileHighlightEnabled && qualifies(following, followers, options.profileGapThreshold) ? 'yellow' : '';
             if (tone) matches.set(card, { following, followers, tone });
           }
         }
@@ -143,10 +167,23 @@
       for (const card of painted.keys()) if (!matches.has(card)) restore(card);
       for (const [card, counts] of matches) paint(card, counts.following, counts.followers, counts.tone);
     }
+    globalThis.chrome?.runtime?.onMessage?.addListener((message, sender) => {
+      if (stopped || sender.id !== chrome.runtime.id) return;
+      let value;
+      if (message?.type === 'FOLLOW_ACTIVITY_UPDATED') value = { viewer: message.event?.account, account: message.event?.target, relationship: message.event?.status === 'requested' ? 'requested' : 'following', checkedAt: message.event?.at };
+      if (message?.type === 'PRIORITY_PROFILE_UPDATED') value = message.profile;
+      if (!value?.viewer || value.viewer !== viewer() || !value.account) return;
+      const key = `${value.viewer}/${value.account}`, at = Number.isFinite(value.checkedAt) ? value.checkedAt : Date.now();
+      if (confirmed.get(key)?.time > at) return;
+      if (['following', 'requested'].includes(value.relationship)) confirmed.set(key, { relationship: value.relationship, time: at });
+      else if (value.relationship === 'not-following') confirmed.delete(key);
+      while (confirmed.size > 500) confirmed.delete(confirmed.keys().next().value);
+      scan();
+    });
     return { scan, configure: value => { options = value; stopped = false; scan(); }, stop: () => {
       stopped = true; observer.disconnect(); portal = null; clearTimeout(timer); timer = null;
       for (const card of painted.keys()) restore(card);
     } };
   }
-  globalThis.MagpieProfile = Object.freeze({ COLOR, GREEN, parseCount, qualifies, priority, countLink, readCount, isVerified, create });
+  globalThis.MagpieProfile = Object.freeze({ COLOR, GREEN, parseCount, qualifies, priority, countLink, readCount, isVerified, viewer, relationship, create });
 })();

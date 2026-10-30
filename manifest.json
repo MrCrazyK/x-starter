@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "X-starter",
   "short_name": "X-starter",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "帮助 X 新账户快速起号：上下文回复候选、手写语气记忆、头像与资料卡标记、回关名单，以及可选的定时自动关注。通过本机 Magpie 调用回复模型。",
   "minimum_chrome_version": "120",
   "options_ui": { "page": "popup.html?settings=1", "open_in_tab": true },

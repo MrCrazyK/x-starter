@@ -1,6 +1,6 @@
 {
   "name": "x-starter",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "description": "帮助 X 新账户快速起号的 Chrome / Edge 扩展，使用本机 Magpie 生成回复候选。",
   "license": "MIT",

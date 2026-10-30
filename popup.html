@@ -11,7 +11,7 @@
 </head>
 <body>
   <main>
-    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.8.1</span></header>
+    <header><img src="icons/48.png" width="40" height="40" alt=""><div><h1>X-starter</h1><p>帮助 X 新账户快速起号。</p></div><span class="version">0.8.2</span></header>
     <section class="connection" aria-label="Magpie 连接">
       <div class="connection-title"><span id="connection-dot" class="dot"></span><strong id="connection-label">正在寻找 Magpie</strong><span class="tag">本机连接</span></div>
       <p id="connection-detail">复用 Magpie 已接入的模型，无需填写 API Key。</p>
@@ -35,9 +35,9 @@
         <div class="profile-threshold-row"><label for="profile-gap-threshold">少于粉丝至少</label><input id="profile-gap-threshold" type="number" min="0" max="100" step="1" value="20" required><span>%</span><i class="profile-swatch" aria-label="芥末黄"></i></div>
         <p id="profile-formula" class="field-help">关注数 ≤ 粉丝数 × 80% 时标记，包含刚好少 20%。</p>
         <label class="toggle"><input id="profile-priority" type="checkbox"><span><strong>优先关注的认证账号标绿</strong><small>已认证、关注数大于粉丝数，且粉丝数大于 500，三项同时满足才标绿。</small></span></label>
-        <p class="field-help">按卡片显示的数量在本地计算；数量未加载时先不标记。</p>
+        <p class="field-help">只标记明确未关注的用户；已关注、已发送申请或状态不明时不标记。按卡片显示的数量在本地计算。</p>
         <label class="toggle"><input id="timeline-priority" type="checkbox"><span><strong>时间线推荐关注：头像绿框</strong><small>无需悬停。开启后，限速读取屏幕内认证作者的资料；满足「关注数 &gt; 粉丝数 &gt; 500」时给头像加绿框。</small></span></label>
-        <p class="field-help">默认关闭。每分钟最多读取 3 位，最多同时打开 1 个临时后台资料页，资料缓存 24 小时。尚未读到资料时不标记；不调用模型。</p>
+        <p class="field-help">默认关闭。每分钟最多读取 3 位，最多同时打开 1 个临时后台资料页；未关注状态缓存 5 分钟，按登录账号隔离。已关注、已申请或未确认状态时不标记；不调用模型。</p>
         <p id="priority-status" class="field-help" role="status"></p><button id="clear-priority-cache" type="button" class="text-button">清除资料缓存并重试</button>
       </fieldset>
       <fieldset class="autofollow-options"><legend>定时自动关注</legend>
